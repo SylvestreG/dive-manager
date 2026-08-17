@@ -1,0 +1,17 @@
+{
+  "server": { "host": "127.0.0.1", "port": 8081, "trust_proxy": false },
+  "database": {
+    "url": "postgres://postgres:postgres@localhost:5434/dive_manager",
+    "migrate_on_boot": false
+  },
+  "auth": {
+    "bootstrap_admin_emails": ["ccna.syl@gmail.com"],
+    "session_idle_days": 30,
+    "session_max_days": 90,
+    "magic_link_hours": 12,
+    "invitation_days": 7
+  },
+  "smtp": null,
+  "base_url": "http://localhost:8081",
+  "cors_allowed_origins": ["http://localhost:5173"]
+}

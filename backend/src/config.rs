@@ -1,0 +1,118 @@
+use serde::Deserialize;
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(default)]
+pub struct Config {
+    pub server: ServerConfig,
+    pub database: DatabaseConfig,
+    pub auth: AuthConfig,
+    pub smtp: Option<SmtpConfig>,
+    /// Base URL used to build links in emails (magic links, invitations).
+    pub base_url: String,
+    /// Allowed CORS origins (empty = same-origin only).
+    pub cors_allowed_origins: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct ServerConfig {
+    pub host: String,
+    pub port: u16,
+    /// Trust the `X-Forwarded-For` header for client IPs (rate limiting).
+    /// Enable ONLY behind a reverse proxy that overwrites the header;
+    /// otherwise clients can forge IPs to bypass per-IP limits.
+    pub trust_proxy: bool,
+}
+
+impl Default for ServerConfig {
+    fn default() -> Self {
+        Self {
+            host: "127.0.0.1".to_string(),
+            port: 8080,
+            trust_proxy: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(default)]
+pub struct DatabaseConfig {
+    pub url: String,
+    /// Run pending migrations at startup (dev convenience; use the
+    /// `migrate` subcommand in production).
+    pub migrate_on_boot: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct AuthConfig {
+    /// Used only while no global admin exists in the database (ADR-0004).
+    pub bootstrap_admin_emails: Vec<String>,
+    pub session_idle_days: i64,
+    pub session_max_days: i64,
+    pub magic_link_hours: i64,
+    pub invitation_days: i64,
+}
+
+impl Default for AuthConfig {
+    fn default() -> Self {
+        Self {
+            bootstrap_admin_emails: vec![],
+            session_idle_days: 30,
+            session_max_days: 90,
+            magic_link_hours: 12,
+            invitation_days: 7,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SmtpConfig {
+    pub host: String,
+    pub port: u16,
+    pub username: String,
+    pub password: String,
+    pub from_email: String,
+    pub from_name: String,
+}
+
+impl Config {
+    /// Loads from `DM_CONFIG_PATH` (default `./config.json`) when the file
+    /// exists, then applies environment overrides (`DATABASE_URL`,
+    /// `DM_BASE_URL`, `DM_SMTP_PASSWORD`).
+    pub fn load() -> Result<Self, String> {
+        let explicit_path = std::env::var("DM_CONFIG_PATH").ok();
+        let path = explicit_path
+            .clone()
+            .unwrap_or_else(|| "config.json".to_string());
+        let mut config: Config = match std::fs::read_to_string(&path) {
+            Ok(raw) => serde_json::from_str(&raw)
+                .map_err(|e| format!("invalid config file {path}: {e}"))?,
+            Err(e) if explicit_path.is_some() => {
+                // An explicitly requested config file must exist — a typoed
+                // path silently running on defaults is a production foot-gun.
+                return Err(format!("cannot read config file {path}: {e}"));
+            }
+            Err(_) => {
+                tracing::warn!(path, "no config file found, running on defaults + env");
+                Config::default()
+            }
+        };
+        if let Ok(url) = std::env::var("DATABASE_URL") {
+            config.database.url = url;
+        }
+        if let Ok(base) = std::env::var("DM_BASE_URL") {
+            config.base_url = base;
+        }
+        if let (Some(smtp), Ok(password)) = (&mut config.smtp, std::env::var("DM_SMTP_PASSWORD")) {
+            smtp.password = password;
+        }
+        if config.base_url.is_empty() {
+            config.base_url = format!("http://{}:{}", config.server.host, config.server.port);
+        }
+        if config.database.url.is_empty() {
+            return Err("database.url is not set (config file or DATABASE_URL)".to_string());
+        }
+        Ok(config)
+    }
+}
