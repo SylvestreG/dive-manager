@@ -38,6 +38,22 @@ impl Tenant {
         }
     }
 
+    /// Passes when the caller holds ANY of the listed permissions.
+    pub fn require_any(&self, permissions: &[Permission]) -> Result<(), AppError> {
+        if permissions.iter().any(|p| self.permissions.contains(p)) {
+            Ok(())
+        } else {
+            Err(AppError::Forbidden(format!(
+                "missing permission: {}",
+                permissions
+                    .iter()
+                    .map(|p| p.as_str())
+                    .collect::<Vec<_>>()
+                    .join(" | ")
+            )))
+        }
+    }
+
     /// Permission check that additionally refuses impersonating principals —
     /// for destructive/authorization-sensitive actions (design §5).
     pub fn require_real(&self, permission: Permission) -> Result<(), AppError> {

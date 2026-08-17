@@ -113,6 +113,169 @@ async fn role_permission_editing_is_validated_and_effective() {
 }
 
 #[tokio::test]
+async fn existing_users_can_be_added_directly_including_the_global_admin() {
+    let app = TestApp::new().await;
+    let root = app.create_user("root@example.com", true, true).await;
+    let token = app.session_for(root.id).await;
+
+    // The product-owner scenario: a global admin creates a club and adds
+    // HIMSELF as its administrator, without any email round-trip.
+    let (_, club) = app
+        .request(
+            Method::POST,
+            "/api/v1/platform/clubs",
+            Some(&token),
+            Some(json!({ "name": "USI", "slug": "usi" })),
+        )
+        .await;
+    assert_eq!(club["slug"], "usi");
+    let (_, roles) = app
+        .request(Method::GET, "/api/v1/clubs/usi/roles", Some(&token), None)
+        .await;
+    let admin_role_id = roles
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["is_admin"] == true)
+        .unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let (status, membership) = app
+        .request(
+            Method::POST,
+            "/api/v1/clubs/usi/memberships",
+            Some(&token),
+            Some(json!({ "email": "root@example.com", "role_id": admin_role_id })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{membership}");
+    assert_eq!(membership["is_admin"], true);
+    let (_, me) = app
+        .request(Method::GET, "/api/v1/me", Some(&token), None)
+        .await;
+    assert_eq!(me["memberships"][0]["club_slug"], "usi");
+
+    // Adding twice conflicts; unknown emails must use an invitation.
+    let (status, _) = app
+        .request(
+            Method::POST,
+            "/api/v1/clubs/usi/memberships",
+            Some(&token),
+            Some(json!({ "email": "root@example.com", "role_id": admin_role_id })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    let (status, _) = app
+        .request(
+            Method::POST,
+            "/api/v1/clubs/usi/memberships",
+            Some(&token),
+            Some(json!({ "email": "nobody@example.com", "role_id": admin_role_id })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    // Granting admin while impersonating is refused (require_real).
+    let member = app.create_user("member@example.com", true, false).await;
+    let member_role_id = roles
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["name"] == "Membre")
+        .unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let (status, added) = app
+        .request(
+            Method::POST,
+            "/api/v1/clubs/usi/memberships",
+            Some(&token),
+            Some(json!({ "email": "member@example.com", "role_id": member_role_id })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{added}");
+    let (_, body) = app
+        .request(
+            Method::POST,
+            "/api/v1/clubs/usi/impersonate",
+            Some(&token),
+            Some(json!({ "user_id": member.id })),
+        )
+        .await;
+    let impersonation = body["token"].as_str().unwrap();
+    let (status, _) = app
+        .request(
+            Method::POST,
+            "/api/v1/clubs/usi/memberships",
+            Some(impersonation),
+            Some(json!({ "email": "nobody2@example.com", "role_id": admin_role_id })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn member_intake_permission_allows_direct_add_but_not_admin_grant() {
+    let app = TestApp::new().await;
+    let (club, admin_role, instructor_role, member_role) = app.create_club("usi").await;
+    let admin = app.create_user("admin@example.com", true, false).await;
+    app.add_membership(club.id, admin.id, admin_role.id).await;
+    let instructor = app.create_user("encadrant@example.com", true, false).await;
+    app.add_membership(club.id, instructor.id, instructor_role.id)
+        .await;
+    let admin_token = app.session_for(admin.id).await;
+    let instructor_token = app.session_for(instructor.id).await;
+    app.create_user("candidate@example.com", true, false).await;
+
+    // Without club.invitations.manage, direct add is denied.
+    let (status, _) = app
+        .request(
+            Method::POST,
+            "/api/v1/clubs/usi/memberships",
+            Some(&instructor_token),
+            Some(json!({ "email": "candidate@example.com", "role_id": member_role.id })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    // Grant the intake permission to Encadrant → direct add of a plain
+    // member works…
+    let (status, _) = app
+        .request(
+            Method::PUT,
+            &format!("/api/v1/clubs/usi/roles/{}/permissions", instructor_role.id),
+            Some(&admin_token),
+            Some(json!({ "permissions": ["club.invitations.manage"] })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = app
+        .request(
+            Method::POST,
+            "/api/v1/clubs/usi/memberships",
+            Some(&instructor_token),
+            Some(json!({ "email": "candidate@example.com", "role_id": member_role.id })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // …but granting the ADMIN role still needs club.roles.manage.
+    app.create_user("candidate2@example.com", true, false).await;
+    let (status, _) = app
+        .request(
+            Method::POST,
+            "/api/v1/clubs/usi/memberships",
+            Some(&instructor_token),
+            Some(json!({ "email": "candidate2@example.com", "role_id": admin_role.id })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
 async fn module_toggles_are_seeded_validated_and_persisted() {
     let app = TestApp::new().await;
     let (club, admin_role, _, _) = app.create_club("usi").await;

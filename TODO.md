@@ -36,11 +36,20 @@ using Fosse). Scope and checklist: `docs/design/migration-strategy.md`.
       tested** (28 tests green). Remaining from review: NICE-TO-HAVE items
       (injectable clock, httpOnly cookie option, tracing request ids) + L1
       (stable error-code doc) — tracked, not blocking.
-- [ ] Product owner reviews; first git commit
+- [x] First commit done (c059d8a)
+- [x] Security review items closed (2026-08-17): login-methods oracle
+      formally accepted + documented (foundation-module.md); courtesy email on
+      direct add → `notifications` module scope; public-auth 401s no longer
+      trigger the global session purge
+- [x] Frontend v1 (React+Vite+Capacitor, Abysse design system): login (magic
+      link + password), invitation acceptance, home, platform admin, club
+      tabs (members/invitations/roles/modules/audit), impersonation banner.
+      End-to-end smoke verified (magic-link flow through the Vite proxy).
+- [ ] **Product owner: install Xcode + CocoaPods** to run the iPhone
+      simulator (`DEVELOPMENT.md` §frontend), then `npm run ios`
 - [ ] Next slice: OIDC Google login (schema ready) — needs the Google Cloud
       OAuth client (product owner)
 - [ ] `members` design + implementation (audit real `diving_level` data first)
-- [ ] Frontend PWA/Capacitor skeleton (de-risk the iOS/Android build chain)
 - [ ] Importer skeleton + first real-data reconciliation report
 - [ ] Then `activities` → `registrations` → `palanquees` → `competencies` →
       `imports` → `notifications`, per `MODULES.md` dependencies

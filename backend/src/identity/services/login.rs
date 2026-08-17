@@ -172,6 +172,46 @@ pub async fn login_password(
     Ok((session_token, user))
 }
 
+/// Whether this email logs in with a password. Product rule (2026-08-17):
+/// the magic link is only offered to accounts WITHOUT a password. Unknown or
+/// disabled emails answer `false` — indistinguishable from a password-less
+/// account, so this endpoint only reveals existence for password holders.
+pub async fn has_password_login(
+    state: &AppState,
+    email: &str,
+    client_ip: &str,
+) -> Result<bool, AppError> {
+    let email = normalize_email(email);
+    if !state
+        .rate
+        .check(&format!("lm:email:{email}"), 20, RATE_WINDOW)
+        || !state
+            .rate
+            .check(&format!("lm:ip:{client_ip}"), 60, RATE_WINDOW)
+    {
+        return Err(AppError::TooManyRequests);
+    }
+    let found = Users::find()
+        .filter(users::Column::Email.eq(email))
+        .filter(users::Column::Status.eq(users::STATUS_ACTIVE))
+        .find_also_related(UserPasswords)
+        .one(&state.db)
+        .await?;
+    Ok(matches!(found, Some((_, Some(_)))))
+}
+
+/// Whether this user has a password credential set (drives the profile UI:
+/// "define a password" vs "change the password").
+pub async fn user_has_password<C: ConnectionTrait>(
+    conn: &C,
+    user_id: Uuid,
+) -> Result<bool, AppError> {
+    Ok(UserPasswords::find_by_id(user_id)
+        .one(conn)
+        .await?
+        .is_some())
+}
+
 /// Sets or replaces the user's optional password credential.
 pub async fn set_password<C: ConnectionTrait>(
     conn: &C,

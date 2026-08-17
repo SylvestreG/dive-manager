@@ -22,13 +22,31 @@ backend/
 - Cross-module access goes through the other module's services, never its
   tables.
 
-## Setup
+## Setup — backend
 
 - Rust stable (rustup), PostgreSQL 16, cargo-nextest.
-- `cp config.example.json config.json`, adjust `database.url`.
+- `cp config.example.json config.json`, adjust `database.url`;
+  set `base_url` to the FRONTEND origin (magic links point there).
 - `cargo run -- migrate` applies migrations (or `database.migrate_on_boot:
-  true` in dev). `cargo run` serves.
-- No SMTP configured ⇒ emails are logged instead of sent (dev mode).
+  true` in dev). `cargo run` serves (port 8081 in the example config).
+- No SMTP configured ⇒ emails are **logged in the backend console** (dev
+  mode) — copy the magic-link / invitation URLs from there.
+
+## Setup — frontend (`frontend/`, React + Vite + Capacitor, ADR-0005)
+
+- Node 22 (`nix shell nixpkgs#nodejs_22` works). `npm install`.
+- **Web**: `npm run dev` → http://localhost:5173 (proxies `/api` to the
+  backend on 8081). First login: request a magic link, copy the URL from the
+  backend console.
+- **iPhone simulator** (one-time machine setup, requires ~15 min):
+  1. Install Xcode from the App Store, then
+     `sudo xcode-select -s /Applications/Xcode.app`.
+  2. Install CocoaPods (`brew install cocoapods`).
+  3. `npm run ios` — builds with `VITE_API_URL=http://localhost:8081/api/v1`
+     (the simulator shares the host loopback; ATS exempts localhost), syncs
+     Capacitor and opens Xcode → pick an iPhone simulator → Run.
+- CORS: the backend config must allow `http://localhost:5173` and
+  `capacitor://localhost` (see `config.example.json`).
 
 ## Tests
 

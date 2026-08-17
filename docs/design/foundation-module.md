@@ -22,6 +22,16 @@ ADR-0003, ADR-0004, ADR-0006.
    `user_oidc_identities`); magic links + passwords + invitations cover all
    logins meanwhile.
 
+**Formally accepted trade-off (product owner, 2026-08-17) — login-methods
+oracle.** `POST /auth/login-methods` powers the email-first login (the magic
+link is only offered to password-less accounts). It necessarily reveals that
+*an account with a password exists* for a given email; password-less and
+unknown emails are indistinguishable (`password: false` for both), so the
+disclosure is limited to password holders. Mitigations: rate-limited
+(20/email, 60/IP per 15 min), no other account data exposed. Same trade-off
+as mainstream email-first login screens (Google, Microsoft). Accepted — do
+not "fix" this without revisiting the product rule.
+
 **Senior-review fixes applied (2026-08-17, H1–H4/M1–M8/L2–L9):** unique
 violations mapped to 409 (`DbErr::Exec` was unhandled); module boundaries
 restored (all `users`-table writes via `identity::services::users`; `/me`
@@ -225,9 +235,14 @@ Notes:
 club.manage            -- club settings, module toggles
 club.members.view / club.members.manage
 club.roles.manage      -- edit role permission sets, assign roles
-club.invitations.manage
+club.invitations.manage -- MEMBER INTAKE: invitations AND direct add of
+                           existing users (one control point, two mechanisms)
 club.impersonate       -- impersonate members of this club
 ```
+
+Reading the role list (names + permission sets) is allowed to holders of any
+of roles.manage / members.view / invitations.manage — the member/invitation
+forms need it; editing stays behind `require_real(roles.manage)`.
 
 Business modules add their own (`sessions.manage`, `competencies.validate`, …)
 in their own designs. **Default seeded sets**: Administrateur = all;

@@ -27,6 +27,22 @@ pub async fn request_magic_link(
 }
 
 #[derive(Deserialize)]
+pub struct LoginMethodsRequest {
+    pub email: String,
+}
+
+/// Email-first login: tells the client whether this account uses a password.
+/// `password: false` covers unknown, disabled and password-less accounts alike.
+pub async fn login_methods(
+    State(state): State<AppState>,
+    ClientIp(ip): ClientIp,
+    Json(body): Json<LoginMethodsRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let password = login::has_password_login(&state, &body.email, &ip).await?;
+    Ok(Json(json!({ "password": password })))
+}
+
+#[derive(Deserialize)]
 pub struct ConsumeMagicLinkRequest {
     pub token: String,
 }

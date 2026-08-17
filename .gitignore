@@ -1,3 +1,8 @@
 /backend/target
 /backend/config.json
+/frontend/node_modules
+/frontend/dist
+/frontend/ios/App/Pods
+/frontend/ios/App/App/public
+/frontend/ios/App/App/capacitor.config.json
 .DS_Store

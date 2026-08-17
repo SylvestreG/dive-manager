@@ -159,6 +159,62 @@ async fn invitation_resend_rotates_the_token_and_revoke_kills_it() {
 }
 
 #[tokio::test]
+async fn direct_add_revokes_the_pending_invitation() {
+    let app = TestApp::new().await;
+    let (club, admin_role, _, member_role) = app.create_club("usi").await;
+    let admin = app.create_user("admin@example.com", true, false).await;
+    app.add_membership(club.id, admin.id, admin_role.id).await;
+    let token = app.session_for(admin.id).await;
+    app.create_user("dual@example.com", true, false).await;
+
+    // Invite, then add the same person directly.
+    let (status, _) = app
+        .request(
+            Method::POST,
+            "/api/v1/clubs/usi/invitations",
+            Some(&token),
+            Some(json!({
+                "email": "dual@example.com",
+                "first_name": "Du",
+                "last_name": "Al",
+                "role_id": member_role.id
+            })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let invitation_token = app.last_email_token("/auth/invitations/");
+    let (status, _) = app
+        .request(
+            Method::POST,
+            "/api/v1/clubs/usi/memberships",
+            Some(&token),
+            Some(json!({ "email": "dual@example.com", "role_id": member_role.id })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // The pending invitation is gone: not listed, not acceptable.
+    let (_, pending) = app
+        .request(
+            Method::GET,
+            "/api/v1/clubs/usi/invitations",
+            Some(&token),
+            None,
+        )
+        .await;
+    assert_eq!(pending["total"], 0);
+    let (status, _) = app
+        .request(
+            Method::POST,
+            &format!("/api/v1/auth/invitations/{invitation_token}/accept"),
+            None,
+            Some(json!({})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn inviting_an_existing_member_conflicts() {
     let app = TestApp::new().await;
     let (club, admin_role, _, member_role) = app.create_club("usi").await;

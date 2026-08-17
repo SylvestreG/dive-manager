@@ -68,9 +68,11 @@ Depends on `registrations`.
 Fosse source: `import_jobs`, `services/import.rs`.
 
 ### `notifications` — status: planned
-Email strategy (send vs assist — product decision pending), templates as club
-configuration with proper HTML escaping, invitation + recap emails, job
-tracking. Depends on `registrations`.
+Emails are SENT by Dive Manager (product decision 2026-08-17), templates as
+club configuration with proper HTML escaping, invitation + recap emails, job
+tracking. **In scope (security review 2026-08-17): courtesy email on direct
+member addition** ("you have been added to club X as Y") — direct adds are
+currently silent. Depends on `registrations`.
 Fosse source: `email_jobs`, `services/email.rs`, frontend EmailsPage cockpit.
 
 ## Module dependency graph

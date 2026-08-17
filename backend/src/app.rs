@@ -11,6 +11,7 @@ use crate::AppState;
 pub fn build_router(state: AppState) -> Router {
     let api = Router::new()
         // Public authentication endpoints.
+        .route("/auth/login-methods", post(auth::login_methods))
         .route("/auth/magic-link", post(auth::request_magic_link))
         .route("/auth/magic-link/consume", post(auth::consume_magic_link))
         .route("/auth/login", post(auth::login_password))
@@ -66,7 +67,7 @@ pub fn build_router(state: AppState) -> Router {
         )
         .route(
             "/clubs/{club_slug}/memberships",
-            get(clubs::list_memberships),
+            get(clubs::list_memberships).post(clubs::add_membership),
         )
         .route(
             "/clubs/{club_slug}/memberships/{membership_id}",
