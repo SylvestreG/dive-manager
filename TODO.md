@@ -17,6 +17,14 @@ using Fosse). Scope and checklist: `docs/design/migration-strategy.md`.
 
 ## Next (in order)
 
+- [x] **FFESSM domain lib**: research sourced from the latest MFT + Code du
+      Sport 2026 (`docs/analysis/ffessm-levels.md`); scope validated (4/4);
+      `backend/ffessm` crate **implemented — 40 tests** (matrices, age
+      gates at day-precision, palanquée tables, DP rules, properties,
+      personas). Awaiting product-owner review before commit.
+- [ ] Then: `members` module full design (template provided by the product
+      owner) building on the ffessm lib — awaiting his approval too
+
 - [x] Frontend stack decided — ADR-0005: React + TS + Vite PWA + Capacitor;
       store v1 = member app, base modules suffice (product owner, 2026-08-17)
 - [ ] **Product owner, this week (critical path, only you can do these):**

@@ -43,4 +43,4 @@ http-body-util = "0.1"
 tower = { version = "0.5", features = ["util"] }
 
 [workspace]
-members = [".", "migration"]
+members = [".", "migration", "ffessm"]
