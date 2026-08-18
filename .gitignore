@@ -6,3 +6,4 @@
 /frontend/ios/App/App/public
 /frontend/ios/App/App/capacitor.config.json
 .DS_Store
+/frontend/tsconfig.tsbuildinfo

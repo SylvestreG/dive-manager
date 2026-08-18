@@ -11,6 +11,9 @@ pub struct Config {
     pub base_url: String,
     /// Allowed CORS origins (empty = same-origin only).
     pub cors_allowed_origins: Vec<String>,
+    /// Origin of the FFESSM licence-info service scraped by the licence
+    /// lookup. Overridable so tests can point at a local stub.
+    pub ffessm_infolicence_base_url: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -109,6 +112,9 @@ impl Config {
         }
         if config.base_url.is_empty() {
             config.base_url = format!("http://{}:{}", config.server.host, config.server.port);
+        }
+        if config.ffessm_infolicence_base_url.is_empty() {
+            config.ffessm_infolicence_base_url = "https://infolicencie.ffessm.fr".to_string();
         }
         if config.database.url.is_empty() {
             return Err("database.url is not set (config file or DATABASE_URL)".to_string());

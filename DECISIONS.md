@@ -169,3 +169,52 @@ usage degenerated into per-row queries; reviews must reject that pattern).
 
 **Consequences.** Entities generated/maintained per module; migrations are
 SeaORM migration crates run via a dedicated command (and at boot in dev).
+
+## ADR-0007 — Two seeded roles only; instructor capability is derived, never a permission source
+
+**Status:** accepted (product owner, 2026-08-18)
+
+**Problem.** "Encadrant" meant two unrelated things: a per-club
+authorization ROLE (seeded with `club.members.view`) and a regulatory
+CAPABILITY (teaching grade E1-E4 derived by the ffessm crate). The product
+owner wanted the role gone — instructor status should follow automatically
+from holding an E-grade — to simplify the UX.
+
+**Decision.** Strict decoupling (option C of
+`docs/design/roles-vs-grades.md`):
+- Seeded roles become **Administrateur + Membre** only; Membre carries no
+  permission by default (a club may grant some via the Roles page). No
+  custom role creation in v1.
+- Everything "being an encadrant" enables in the product (badges, stamp,
+  instructor number, and later DP assignment, palanquée supervision, skill
+  validation) is **derived from the ffessm teaching grade**, automatically.
+- **Permissions are NEVER derived from certifications.** Recording a brevet
+  is a data write, not a grant; deriving rights from it would let any
+  `members.manage` holder mint staff, leak powers across clubs through the
+  user-global profile, and make revocation impossible without deleting a
+  true federal certification (would break ADR-0003's fail-closed rule).
+- Stagiaire MF1: derived teaching badge/capability only — never DP, no
+  application rights.
+
+**Consequences.** Seed updated (existing dev data: Encadrant members
+reassigned to Membre, one-off); Fosse importer maps everyone to Membre
+(admins aside), grades derive from imported certifications; tests that need
+a "view-only staff" persona create a dedicated role explicitly.
+Follow-up (product owner, 2026-08-18): the club **Roles page/tab is removed
+from the UI** — with two fixed roles there is nothing to manage. The
+permission engine (tables, grants, `PUT /roles/{id}/permissions`, tests)
+stays server-side untouched, available via support/API and ready if a
+screen ever comes back.
+
+**Amendment (product owner, 2026-08-18 — "Marc est E3, il doit voir ses
+élèves").** One narrow, deliberate exception to "never derive rights from
+certifications": a **certified** instructor (derived `teaching_certified`
+E1-E4, certifications only — the stagiaire MF1 status grants nothing, per
+Q5) who is an ACTIVE member of a club gets **read-only** access to that
+club's member data (list, member sheet, stamp view). Writes keep requiring
+`club.members.manage`. Accepted trade-offs, eyes open: recording a
+teaching certification also grants this read access (the recorder already
+holds `members.manage`); an instructor joining a second club sees its
+members too; revoking means suspending the membership or removing the
+certification. Implemented as a domain rule inside the users-module read
+handlers — the tenancy permission engine is untouched.

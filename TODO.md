@@ -19,11 +19,19 @@ using Fosse). Scope and checklist: `docs/design/migration-strategy.md`.
 
 - [x] **FFESSM domain lib**: research sourced from the latest MFT + Code du
       Sport 2026 (`docs/analysis/ffessm-levels.md`); scope validated (4/4);
-      `backend/ffessm` crate **implemented — 40 tests** (matrices, age
-      gates at day-precision, palanquée tables, DP rules, properties,
-      personas). Awaiting product-owner review before commit.
-- [ ] Then: `members` module full design (template provided by the product
-      owner) building on the ffessm lib — awaiting his approval too
+      `backend/ffessm` crate **implemented, reviewed, committed** (dc3e13b).
+- [x] **`users` module** (renamed from `members`: profile is USER-GLOBAL,
+      product decision 2026-08-17) — design approved
+      (`docs/design/users-module.md`), **implemented + tested** (backend
+      100 tests green: tenancy isolation/IDOR, provenance matrix, derived
+      personas over HTTP, stamp gating, impersonation/authorization matrix;
+      frontend: profile page with full prerogatives, red incomplete banner,
+      member sheet, badges on the members list). Senior review done
+      (2026-08-17); all approved findings fixed (highlights: /me writes
+      refused while impersonating, has_stamp without blob load, DP trimix
+      limited zone exposed, FK indexes, CACI read moved into the txn,
+      preparation cleared on obtention). Awaiting product-owner validation
+      before commit.
 
 - [x] Frontend stack decided — ADR-0005: React + TS + Vite PWA + Capacitor;
       store v1 = member app, base modules suffice (product owner, 2026-08-17)
@@ -57,8 +65,17 @@ using Fosse). Scope and checklist: `docs/design/migration-strategy.md`.
       simulator (`DEVELOPMENT.md` §frontend), then `npm run ios`
 - [ ] Next slice: OIDC Google login (schema ready) — needs the Google Cloud
       OAuth client (product owner)
-- [ ] `members` design + implementation (audit real `diving_level` data first)
-- [ ] Importer skeleton + first real-data reconciliation report
+- [x] Done (2026-08-18, chained agents):
+  - [x] Certification checkbox tree on the fiche membre (`ffessm::covered_by`
+        + catalog endpoint)
+  - [x] Instructor section (numéro + tampon) gated on a derived ffessm
+        teaching grade
+  - [x] ADR-0007 implemented: seed = Administrateur+Membre only, dev-data
+        Encadrant roles removed (members reassigned to Membre), tests build
+        staff personas via an explicit `create_role` helper
+- [ ] Importer skeleton + first real-data reconciliation report (includes the
+      `diving_level` comma-blob → certification codes mapping audit, and CSV
+      bulk entry of CACI/RIFAP dates — product decision 2026-08-17)
 - [ ] Then `activities` → `registrations` → `palanquees` → `competencies` →
       `imports` → `notifications`, per `MODULES.md` dependencies
 

@@ -373,6 +373,7 @@ mod tests {
             certifications: certs,
             statuses: &[],
             birthdate: d(1990, 1, 1),
+            handisub: false,
         }
     }
 
@@ -534,7 +535,8 @@ mod tests {
         let minor = Person {
             certifications: N2,
             statuses: &[],
-            birthdate: d(2010, 1, 1), // 16
+            birthdate: d(2010, 1, 1), // 16,
+            handisub: false,
         };
         let n2_adult = adult(N2);
         let r = validate_palanquee(
@@ -616,7 +618,8 @@ mod tests {
         let minor_n2 = Person {
             certifications: N2,
             statuses: &[],
-            birthdate: d(2010, 1, 1), // 16
+            birthdate: d(2010, 1, 1), // 16,
+            handisub: false,
         };
         let gp = adult(GP);
         let r = validate_palanquee(

@@ -23,11 +23,20 @@ export function can(club: ClubContext, permission: string): boolean {
   return club.permissions.includes(permission);
 }
 
-/** Index route: administrators land on Members; plain members get a simple
- * welcome card (they have no club-management tabs). */
+/** Index route: whoever can see the members list lands on it (grant OR
+ * derived certified-instructor rule); plain members get a welcome card. */
 export function ClubIndex() {
   const club = useClub();
-  if (can(club, "club.members.view")) {
+  const myProfile = useQuery({
+    queryKey: ["me", "profile"],
+    queryFn: () => api.myProfile(),
+    staleTime: 5 * 60 * 1000,
+  });
+  if (myProfile.isPending) return <Loading />;
+  if (
+    can(club, "club.members.view") ||
+    myProfile.data?.derived.teaching_certified != null
+  ) {
     return <Navigate to="members" replace />;
   }
   return (
@@ -49,6 +58,15 @@ export default function ClubLayout() {
     enabled: !!slug,
     retry: false,
   });
+  // Certified instructors see the members of their clubs (ADR-0007
+  // amendment, 2026-08-18) — the backend applies the same derived rule.
+  const myProfile = useQuery({
+    queryKey: ["me", "profile"],
+    queryFn: () => api.myProfile(),
+    staleTime: 5 * 60 * 1000,
+  });
+  const certifiedInstructor =
+    myProfile.data?.derived.teaching_certified != null;
 
   // Remember the last visited club: the "Mon club" tab targets it.
   const userId = me?.user.id;
@@ -68,18 +86,15 @@ export default function ClubLayout() {
     {
       to: "members",
       label: t.club.tabs.members,
-      show: can(club, "club.members.view"),
+      show: can(club, "club.members.view") || certifiedInstructor,
     },
     {
       to: "invitations",
       label: t.club.tabs.invitations,
       show: can(club, "club.invitations.manage"),
     },
-    {
-      to: "roles",
-      label: t.club.tabs.roles,
-      show: can(club, "club.roles.manage"),
-    },
+    // No Roles tab (ADR-0007 follow-up, 2026-08-18): two fixed roles only —
+    // the permission engine stays server-side for support/API use.
     {
       to: "modules",
       label: t.club.tabs.modules,

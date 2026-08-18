@@ -22,6 +22,7 @@ fn persona_gold_youth_diver_12_years_old() {
         certifications: &[C::PlongeurOr],
         statuses: &[],
         birthdate: d(2014, 3, 10),
+        handisub: false,
     };
     let apt = aptitudes(&lea, today());
     assert!(apt.diver.contains(&A::Pe20), "Or à 12 ans = espace 0-20 m");
@@ -38,6 +39,7 @@ fn persona_teen_n2_and_the_autonomy_gates() {
         certifications: &[C::N1, C::N2],
         statuses: &[],
         birthdate: d(2011, 2, 1),
+        handisub: false,
     };
     let at_15 = d(2026, 1, 31);
     let at_16 = d(2027, 2, 1);
@@ -61,6 +63,7 @@ fn persona_n3_adult_full_prerogatives() {
         certifications: &[C::N1, C::N2, C::N3, C::Nitrox, C::NitroxConfirme, C::Rifap],
         statuses: &[],
         birthdate: d(2001, 5, 5),
+        handisub: false,
     };
     let (apt, restrictions) = exercisable_aptitudes(&karim, today());
     assert!(apt.diver.contains(&A::Pa60));
@@ -89,6 +92,7 @@ fn persona_initiateur_gp_is_e2_and_club_pool_dp() {
         certifications: &[C::N1, C::N2, C::N3, C::N4Gp, C::Initiateur, C::Rifap],
         statuses: &[],
         birthdate: d(1996, 9, 9),
+        handisub: false,
     };
     let cap = supervision(&sophie, today());
     assert!(cap.gp);
@@ -116,6 +120,7 @@ fn persona_mf1_trainee_keeps_e2_only_while_livret_lives() {
         certifications: &[C::N4Gp, C::Rifap],
         statuses: &statuses,
         birthdate: d(1998, 4, 4),
+        handisub: false,
     };
     assert_eq!(
         supervision(&marc, today()).teaching,
@@ -133,6 +138,7 @@ fn persona_mf1_runs_the_club() {
         certifications: &[C::Mf1, C::NitroxConfirme, C::Rifap, C::PermisCotier],
         statuses: &[],
         birthdate: d(1985, 12, 25),
+        handisub: false,
     };
     assert_eq!(
         supervision(&ana, today()).teaching,
@@ -151,6 +157,7 @@ fn persona_mf1_runs_the_club() {
         certifications: &[C::N2],
         statuses: &[],
         birthdate: d(2000, 1, 1),
+        handisub: false,
     };
     let ok = validate_palanquee(PalanqueeKind::Teaching, 40, Some(&ana), &[&n2], today());
     assert!(ok.is_legal(), "{:?}", ok.violations);
@@ -158,6 +165,7 @@ fn persona_mf1_runs_the_club() {
         certifications: &[C::N3],
         statuses: &[],
         birthdate: d(2000, 1, 1),
+        handisub: false,
     };
     let deep = validate_palanquee(PalanqueeKind::Teaching, 60, Some(&ana), &[&n3], today());
     assert!(!deep.is_legal());
@@ -169,6 +177,7 @@ fn persona_pesh_20_dives_guided_with_handisub_warning() {
         certifications: &[C::Pesh20, C::Nitrox],
         statuses: &[],
         birthdate: d(1999, 7, 7),
+        handisub: false,
     };
     // PESH-20 a ouvert la qualification nitrox élémentaire.
     assert_eq!(ffessm::max_o2_fraction(&pesh), 0.40);
@@ -176,6 +185,7 @@ fn persona_pesh_20_dives_guided_with_handisub_warning() {
         certifications: &[C::Initiateur, C::N4Gp, C::Eh1],
         statuses: &[],
         birthdate: d(1990, 1, 1),
+        handisub: false,
     };
     let report = validate_palanquee(
         PalanqueeKind::Exploration,

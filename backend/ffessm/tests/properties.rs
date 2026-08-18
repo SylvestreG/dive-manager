@@ -22,10 +22,10 @@ proptest! {
         birth in arbitrary_birthdate(),
     ) {
         let on = NaiveDate::from_ymd_opt(2026, 8, 17).unwrap();
-        let base = Person { certifications: &certs, statuses: &[], birthdate: birth };
+        let base = Person { certifications: &certs, statuses: &[], birthdate: birth, handisub: false };
         let mut extended_certs = certs.clone();
         extended_certs.push(extra);
-        let extended = Person { certifications: &extended_certs, statuses: &[], birthdate: birth };
+        let extended = Person { certifications: &extended_certs, statuses: &[], birthdate: birth, handisub: false };
 
         let before = aptitudes(&base, on);
         let after = aptitudes(&extended, on);
@@ -40,7 +40,7 @@ proptest! {
         birth in arbitrary_birthdate(),
         years_later in 0i32..30,
     ) {
-        let person = Person { certifications: &certs, statuses: &[], birthdate: birth };
+        let person = Person { certifications: &certs, statuses: &[], birthdate: birth, handisub: false };
         let start = NaiveDate::from_ymd_opt(2026, 8, 17).unwrap();
         let later = NaiveDate::from_ymd_opt(2026 + years_later, 8, 17).unwrap();
         let (now, _) = exercisable_aptitudes(&person, start);
@@ -62,7 +62,7 @@ proptest! {
         birth in arbitrary_birthdate(),
     ) {
         let on = NaiveDate::from_ymd_opt(2026, 8, 17).unwrap();
-        let person = Person { certifications: &certs, statuses: &[], birthdate: birth };
+        let person = Person { certifications: &certs, statuses: &[], birthdate: birth, handisub: false };
         let held = aptitudes(&person, on);
         let (exercisable, _) = exercisable_aptitudes(&person, on);
         prop_assert!(exercisable.diver.is_subset(&held.diver));

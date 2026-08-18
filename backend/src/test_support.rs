@@ -21,7 +21,7 @@ use crate::identity::entities::users;
 use crate::identity::services::sessions;
 use crate::mailer::Mailer;
 use crate::rate_limit::RateLimiter;
-use crate::tenancy::entities::{club_roles, clubs, memberships, prelude::*};
+use crate::tenancy::entities::{club_role_permissions, club_roles, clubs, memberships, prelude::*};
 use crate::tenancy::services::seed;
 use crate::{app, normalize_email, now, AppState};
 
@@ -135,17 +135,12 @@ impl TestApp {
         token
     }
 
-    /// Creates a club with seeded roles;
-    /// returns (club, admin_role, instructor_role, member_role).
+    /// Creates a club with the two seeded roles (ADR-0007);
+    /// returns (club, admin_role, member_role).
     pub async fn create_club(
         &self,
         slug: &str,
-    ) -> (
-        clubs::Model,
-        club_roles::Model,
-        club_roles::Model,
-        club_roles::Model,
-    ) {
+    ) -> (clubs::Model, club_roles::Model, club_roles::Model) {
         let created = now();
         let club = clubs::ActiveModel {
             id: Set(Uuid::now_v7()),
@@ -173,12 +168,36 @@ impl TestApp {
                 .cloned()
                 .expect("seeded role")
         };
-        (
-            club,
-            find(seed::ROLE_ADMIN),
-            find(seed::ROLE_INSTRUCTOR),
-            find(seed::ROLE_MEMBER),
-        )
+        (club, find(seed::ROLE_ADMIN), find(seed::ROLE_MEMBER))
+    }
+
+    /// Creates an extra club role with explicit permission grants (ADR-0007:
+    /// the seed has no staff role — tests build their own personas).
+    pub async fn create_role(
+        &self,
+        club_id: Uuid,
+        name: &str,
+        permissions: &[&str],
+    ) -> club_roles::Model {
+        let role = club_roles::ActiveModel {
+            id: Set(Uuid::now_v7()),
+            club_id: Set(club_id),
+            name: Set(name.to_string()),
+            is_admin: Set(false),
+        }
+        .insert(&self.state.db)
+        .await
+        .expect("create role");
+        for permission in permissions {
+            club_role_permissions::ActiveModel {
+                role_id: Set(role.id),
+                permission: Set(String::from(*permission)),
+            }
+            .insert(&self.state.db)
+            .await
+            .expect("grant permission");
+        }
+        role
     }
 
     pub async fn add_membership(&self, club_id: Uuid, user_id: Uuid, role_id: Uuid) -> Uuid {

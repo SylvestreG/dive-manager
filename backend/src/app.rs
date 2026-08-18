@@ -6,6 +6,9 @@ use tower_http::trace::TraceLayer;
 
 use crate::identity::handlers::{auth, me as me_password};
 use crate::tenancy::handlers::{clubs, me, platform, public_invitations};
+use crate::users::handlers::{
+    catalog as users_catalog, me as me_profile, member as member_profile,
+};
 use crate::AppState;
 
 pub fn build_router(state: AppState) -> Router {
@@ -29,6 +32,28 @@ pub fn build_router(state: AppState) -> Router {
         .route("/auth/stop-impersonation", post(auth::stop_impersonation))
         .route("/me", get(me::get_me))
         .route("/me/password", put(me_password::set_my_password))
+        // Self-service diving profile (user-global, no club in the URL).
+        // Certifications are staff-entered only (product decision
+        // 2026-08-18): no /me/certifications endpoints.
+        .route(
+            "/me/profile",
+            get(me_profile::get_my_profile).put(me_profile::put_my_profile),
+        )
+        .route(
+            "/me/stamp",
+            get(me_profile::get_my_stamp)
+                .put(me_profile::put_my_stamp)
+                .delete(me_profile::delete_my_stamp),
+        )
+        // Each member imports their OWN official FFESSM licence (product
+        // decision 2026-08-18) — fills the profile + brevets (`imported`).
+        .route(
+            "/me/ffessm/import",
+            post(me_profile::import_my_ffessm_licence),
+        )
+        // Static FFESSM catalog (codes, labels, derived coverage) for the
+        // certification checkbox tree — authenticated, nothing personal.
+        .route("/catalog/certifications", get(users_catalog::list_catalog))
         // Platform administration (real global admins only).
         .route(
             "/platform/clubs",
@@ -65,9 +90,11 @@ pub fn build_router(state: AppState) -> Router {
             "/clubs/{club_slug}/roles/{role_id}/permissions",
             put(clubs::set_role_permissions),
         )
+        // Reading the members list goes through /members (users module,
+        // badges included); this route only writes memberships.
         .route(
             "/clubs/{club_slug}/memberships",
-            get(clubs::list_memberships).post(clubs::add_membership),
+            post(clubs::add_membership),
         )
         .route(
             "/clubs/{club_slug}/memberships/{membership_id}",
@@ -86,7 +113,35 @@ pub fn build_router(state: AppState) -> Router {
             delete(clubs::revoke_invitation),
         )
         .route("/clubs/{club_slug}/impersonate", post(clubs::impersonate))
-        .route("/clubs/{club_slug}/audit-log", get(clubs::audit_log));
+        .route("/clubs/{club_slug}/audit-log", get(clubs::audit_log))
+        // Member diving profiles (users module; target must be an active
+        // member of the club — enforced inside the handlers).
+        .route(
+            "/clubs/{club_slug}/members",
+            get(member_profile::list_members),
+        )
+        .route(
+            "/clubs/{club_slug}/members/{user_id}/profile",
+            get(member_profile::get_member_profile).put(member_profile::put_member_profile),
+        )
+        .route(
+            "/clubs/{club_slug}/members/{user_id}/certifications",
+            post(member_profile::record_certification),
+        )
+        .route(
+            "/clubs/{club_slug}/members/{user_id}/certifications/{certification_id}",
+            delete(member_profile::delete_member_certification),
+        )
+        .route(
+            "/clubs/{club_slug}/members/{user_id}/training-status",
+            put(member_profile::set_training_status),
+        )
+        .route(
+            "/clubs/{club_slug}/members/{user_id}/stamp",
+            get(member_profile::get_member_stamp)
+                .put(member_profile::put_member_stamp)
+                .delete(member_profile::delete_member_stamp),
+        );
 
     let cors = build_cors(&state);
     Router::new()

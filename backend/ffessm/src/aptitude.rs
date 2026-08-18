@@ -25,6 +25,42 @@ pub enum DiverAptitude {
 }
 
 impl DiverAptitude {
+    pub const ALL: [DiverAptitude; 13] = [
+        DiverAptitude::Debutant,
+        DiverAptitude::Pe12,
+        DiverAptitude::Pe20,
+        DiverAptitude::Pe40,
+        DiverAptitude::Pe60,
+        DiverAptitude::Pa12,
+        DiverAptitude::Pa20,
+        DiverAptitude::Pa40,
+        DiverAptitude::Pa60,
+        DiverAptitude::Pesh6,
+        DiverAptitude::Pesh12,
+        DiverAptitude::Pesh20,
+        DiverAptitude::Pesh40,
+    ];
+
+    /// Stable code, safe for APIs and storage. Never rename (same contract
+    /// as [`crate::Certification::code`]).
+    pub fn code(&self) -> &'static str {
+        match self {
+            DiverAptitude::Debutant => "DEBUTANT",
+            DiverAptitude::Pe12 => "PE12",
+            DiverAptitude::Pe20 => "PE20",
+            DiverAptitude::Pe40 => "PE40",
+            DiverAptitude::Pe60 => "PE60",
+            DiverAptitude::Pa12 => "PA12",
+            DiverAptitude::Pa20 => "PA20",
+            DiverAptitude::Pa40 => "PA40",
+            DiverAptitude::Pa60 => "PA60",
+            DiverAptitude::Pesh6 => "PESH6",
+            DiverAptitude::Pesh12 => "PESH12",
+            DiverAptitude::Pesh20 => "PESH20",
+            DiverAptitude::Pesh40 => "PESH40",
+        }
+    }
+
     /// Maximum depth of the aptitude's espace d'évolution, in meters
     /// (Code du Sport art. A322-76 / annexe III-14a).
     pub fn max_depth_m(&self) -> u8 {
@@ -125,6 +161,20 @@ impl SupervisionGrade {
 mod tests {
     use super::*;
     use DiverAptitude::*;
+
+    /// Golden list: these codes are an API/storage contract (same rule as
+    /// the certification codes). Any change here is a breaking change.
+    #[test]
+    fn aptitude_codes_are_frozen() {
+        let codes: Vec<&str> = DiverAptitude::ALL.iter().map(|a| a.code()).collect();
+        assert_eq!(
+            codes,
+            [
+                "DEBUTANT", "PE12", "PE20", "PE40", "PE60", "PA12", "PA20", "PA40", "PA60",
+                "PESH6", "PESH12", "PESH20", "PESH40",
+            ]
+        );
+    }
 
     #[test]
     fn covers_is_a_depth_order_within_each_family() {

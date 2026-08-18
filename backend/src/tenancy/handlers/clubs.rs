@@ -293,46 +293,6 @@ pub struct MembershipDto {
     pub status: String,
 }
 
-pub async fn list_memberships(
-    State(state): State<AppState>,
-    tenant: Tenant,
-    Query(page): Query<PageParams>,
-) -> Result<Json<crate::pagination::Page<MembershipDto>>, AppError> {
-    tenant.require(Permission::ClubMembersView)?;
-    let (page, per_page) = page.resolve();
-    let paginator = Memberships::find()
-        .filter(memberships::Column::ClubId.eq(tenant.club.id))
-        .find_also_related(Users)
-        .order_by_asc(memberships::Column::CreatedAt)
-        .paginate(&state.db, per_page);
-    let total = paginator.num_items().await? as u64;
-    let rows = paginator.fetch_page(page).await?;
-    let roles = ClubRoles::find()
-        .filter(club_roles::Column::ClubId.eq(tenant.club.id))
-        .all(&state.db)
-        .await?;
-
-    let mut result = Vec::with_capacity(rows.len());
-    for (membership, user) in rows {
-        let (Some(user), Some(role)) = (user, roles.iter().find(|r| r.id == membership.role_id))
-        else {
-            tracing::error!(membership_id = %membership.id, "membership with dangling user/role");
-            continue;
-        };
-        result.push(MembershipDto {
-            id: membership.id,
-            user: UserDto::from(&user),
-            role_id: role.id,
-            role_name: role.name.clone(),
-            is_admin: role.is_admin,
-            status: membership.status,
-        });
-    }
-    Ok(Json(crate::pagination::Page::new(
-        result, total, page, per_page,
-    )))
-}
-
 #[derive(Deserialize)]
 pub struct AddMembershipRequest {
     pub email: String,

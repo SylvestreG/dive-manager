@@ -6,8 +6,8 @@ use crate::test_support::TestApp;
 #[tokio::test]
 async fn tenant_isolation_blocks_cross_club_access() {
     let app = TestApp::new().await;
-    let (club_a, admin_role_a, _, _) = app.create_club("club-a").await;
-    let (club_b, admin_role_b, _, member_role_b) = app.create_club("club-b").await;
+    let (club_a, admin_role_a, _) = app.create_club("club-a").await;
+    let (club_b, admin_role_b, member_role_b) = app.create_club("club-b").await;
     let admin_a = app.create_user("admin-a@example.com", true, false).await;
     app.add_membership(club_a.id, admin_a.id, admin_role_a.id)
         .await;
@@ -17,7 +17,7 @@ async fn tenant_isolation_blocks_cross_club_access() {
     for path in [
         "/api/v1/clubs/club-b",
         "/api/v1/clubs/club-b/roles",
-        "/api/v1/clubs/club-b/memberships",
+        "/api/v1/clubs/club-b/members",
         "/api/v1/clubs/club-b/audit-log",
     ] {
         let (status, _) = app.request(Method::GET, path, Some(&token_a), None).await;
@@ -82,7 +82,7 @@ async fn tenant_isolation_blocks_cross_club_access() {
 #[tokio::test]
 async fn suspended_club_and_membership_are_denied() {
     let app = TestApp::new().await;
-    let (club, admin_role, _, member_role) = app.create_club("usi").await;
+    let (club, admin_role, member_role) = app.create_club("usi").await;
     let member = app.create_user("member@example.com", true, false).await;
     let member_membership = app.add_membership(club.id, member.id, member_role.id).await;
     let admin = app.create_user("admin@example.com", true, false).await;

@@ -239,6 +239,7 @@ mod tests {
             certifications: certs,
             statuses: &[],
             birthdate: birth,
+            handisub: false,
         }
     }
     fn on() -> NaiveDate {

@@ -1,4 +1,4 @@
-import { Link } from "react-router";
+import { Link, Navigate } from "react-router";
 
 import { Badge, Card, EmptyState, PageTitle } from "../components/ui";
 import { t } from "../i18n/fr";
@@ -7,6 +7,11 @@ import { useMe } from "../lib/session";
 export default function Home() {
   const { data: me } = useMe();
   if (!me) return null;
+
+  // Product decision 2026-08-18: users with exactly one club land directly in it, no club picker.
+  if (me.memberships.length === 1) {
+    return <Navigate to={`/clubs/${me.memberships[0].club_slug}`} replace />;
+  }
 
   return (
     <>

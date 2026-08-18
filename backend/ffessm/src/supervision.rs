@@ -158,6 +158,7 @@ mod tests {
             certifications: certs,
             statuses: &[],
             birthdate: d(1990, 1, 1),
+            handisub: false,
         }
     }
 
@@ -191,7 +192,8 @@ mod tests {
         let minor_n4 = Person {
             certifications: &[C::N4Gp],
             statuses: &[],
-            birthdate: d(2009, 1, 1), // 17 in Aug 2026
+            birthdate: d(2009, 1, 1), // 17 in Aug 2026,
+            handisub: false,
         };
         assert!(!supervision(&minor_n4, on()).gp);
         // Same person the day of their 18th birthday.
@@ -201,7 +203,8 @@ mod tests {
         let young_initiateur = Person {
             certifications: &[C::Initiateur],
             statuses: &[],
-            birthdate: d(2010, 1, 1), // 16
+            birthdate: d(2010, 1, 1), // 16,
+            handisub: false,
         };
         assert_eq!(supervision(&young_initiateur, on()).teaching, Some(G::E1));
         // …but cannot be pool DP before 18 (A322-98 + MFT).
@@ -222,6 +225,7 @@ mod tests {
             certifications: &[C::N4Gp, C::Initiateur],
             statuses: &statuses,
             birthdate: d(1990, 1, 1),
+            handisub: false,
         };
         assert_eq!(supervision(&p, on()).teaching, Some(G::E2));
         // After expiry, falls back to whatever the certifications give (E2
@@ -232,6 +236,7 @@ mod tests {
             certifications: &[C::N4Gp],
             statuses: &statuses,
             birthdate: d(1990, 1, 1),
+            handisub: false,
         };
         assert_eq!(supervision(&solo, on()).teaching, Some(G::E2));
         assert_eq!(supervision(&solo, d(2027, 6, 1)).teaching, None);

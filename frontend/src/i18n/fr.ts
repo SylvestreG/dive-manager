@@ -80,7 +80,6 @@ export const t = {
     tabs: {
       members: "Membres",
       invitations: "Invitations",
-      roles: "Rôles",
       modules: "Modules",
       audit: "Journal",
     },
@@ -104,12 +103,6 @@ export const t = {
       revoke: "Révoquer",
       expires: "Expire le",
       sent: "Invitation envoyée.",
-    },
-    roles: {
-      title: "Rôles et permissions",
-      adminImplicit: "Toutes les permissions (implicite)",
-      savePermissions: "Enregistrer les permissions",
-      saved: "Permissions mises à jour.",
     },
     modules: {
       title: "Modules du club",
@@ -156,19 +149,133 @@ export const t = {
     logoutAll: "Se déconnecter de tous mes appareils",
   },
 
+  diving: {
+    incompleteBanner:
+      "Votre profil plongée est incomplet : renseignez votre date de naissance pour connaître vos prérogatives.",
+    incompleteBannerCta: "Compléter mon profil",
+    incompleteMember:
+      "Profil incomplet : la date de naissance est nécessaire pour calculer les prérogatives.",
+    sectionProfile: "Profil plongée",
+    sectionCertifications: "Certifications et qualifications",
+    sectionPrerogatives: "Mes prérogatives",
+    sectionPrerogativesMember: "Prérogatives",
+    birthdate: "Date de naissance",
+    phone: "Téléphone",
+    licenceNumber: "Numéro de licence",
+    instructorNumber: "Numéro d'encadrant (E2/E3/E4)",
+    medical: "Certificat médical (CACI)",
+    medicalValidUntil: "CACI valable jusqu'au",
+    medicalManagedByClub: "Renseigné par les administrateurs du club.",
+    medicalExpired: "CACI expiré",
+    medicalMissing: "CACI non renseigné",
+    medicalSaved: "Date de CACI enregistrée.",
+    gear: "Mon matériel",
+    gearRegulator: "Détendeur",
+    gearSecondRegulator: "Second détendeur",
+    gearStab: "Stab",
+    gearStabSize: "Taille de stab",
+    gearNitrox: "Équipement nitrox",
+    handisub: "Plongée Handisub (situation de handicap)",
+    preparing: "Certification en préparation",
+    preparingNone: "Aucune",
+    preparingIssues: "Points à vérifier pour cette préparation :",
+    saved: "Profil enregistré.",
+
+    certificationsManagedByClub:
+      "Vos certifications sont enregistrées par les encadrants et administrateurs de votre club.",
+    obtainedOn: "Obtenue le (facultatif)",
+    selectCertification: "Choisir une certification…",
+    coveredBySelection: "Acquis via la sélection",
+    willBeRemoved: "Sera retirée",
+    certificationsSaved: "Certifications mises à jour.",
+    remove: "Retirer",
+    provenance: {
+      declared: "Déclarée",
+      recorded: "Enregistrée",
+      imported: "Importée",
+      validated: "Validée",
+    } as Record<string, string>,
+
+    aptitudes: "Aptitudes en plongée",
+    aptitudeKind: {
+      guided: "encadré",
+      autonomous: "autonome",
+      pesh: "PESH",
+    } as Record<string, string>,
+    noAptitude: "Aucune aptitude dérivée pour le moment.",
+    depth: (m: number) => `${m} m`,
+    restrictions: "Restrictions applicables",
+    supervision: "Encadrement",
+    gpYes: "Guide de palanquée (exploration)",
+    teachingGrade: (grade: string) => `Enseignement : ${grade}`,
+    noSupervision: "Pas de prérogative d'encadrement.",
+    dp: "Direction de plongée",
+    dpPool: "Piscine / fosse ≤ 6 m",
+    dpExploration: "Exploration air/nitrox",
+    dpTeaching: "Enseignement",
+    dpTrimixShallow: "Trimix zone limitée (ens. ≤ 40 m, explo ≤ 70 m)",
+    dpTrimix: "Trimix toutes zones",
+    dpMixtures:
+      "Pour diriger des plongées aux mélanges, le PN-C ou PTH-120 est requis (détenu).",
+    noDp: "Ne peut pas être directeur de plongée.",
+    gas: "Gaz",
+    maxO2: (pct: number) => `O₂ max : ${pct} %`,
+    eligibleNext: "Certifications préparables",
+    noEligible: "Rien à proposer pour le moment.",
+    age: (a: number) => `${a} ans`,
+    regulationNote: (snapshot: string) =>
+      `Prérogatives calculées selon : ${snapshot}. Elles ne remplacent pas le jugement du directeur de plongée.`,
+
+    stamp: "Tampon d'encadrant",
+    stampHint:
+      "PNG ou JPEG, 512 Ko maximum. Réservé aux encadrants E2 et plus (certification validée).",
+    stampUpload: "Téléverser un tampon",
+    stampReplace: "Remplacer le tampon",
+    stampDelete: "Supprimer le tampon",
+    stampSaved: "Tampon enregistré.",
+    stampTooBig: "L'image dépasse 512 Ko.",
+
+    ffessm: {
+      title: "Importer ma licence FFESSM",
+      hint: "Prenez en photo le QR code de votre licence dématérialisée, ou collez son lien. Votre profil et vos brevets sont remplis automatiquement depuis la source officielle FFESSM.",
+      scan: "Scanner le QR code",
+      scanning: "Lecture du QR code…",
+      scanFailed:
+        "QR code illisible. Cadrez-le en plein écran et réessayez, ou collez le lien.",
+      urlLabel: "Lien du QR code de la licence",
+      urlPlaceholder: "https://infolicencie.ffessm.fr/Home/InfoLicence?number=…&key=…",
+      import: "Importer la licence",
+      importing: "Import en cours…",
+      resultFor: (name: string) => `Licence de ${name} importée.`,
+      imported: (n: number) =>
+        n === 1 ? "1 brevet importé." : `${n} brevets importés.`,
+      skipped: (codes: string) =>
+        `Conservés (déjà validés par le club) : ${codes}.`,
+      unmapped: (labels: string) =>
+        `Non reconnus, à saisir manuellement : ${labels}.`,
+      empty: "Aucun brevet trouvé sur cette licence.",
+    },
+
+    memberProfileTitle: "Fiche plongeur",
+    memberOpenProfile: "Fiche plongeur",
+    recordTitle: "Enregistrer une certification",
+    recordValidated: "Validée par le club (source officielle vérifiée)",
+    record: "Enregistrer",
+    trainingStatus: "Stagiaire pédagogique MF1",
+    trainingStatusHint:
+      "Livret pédagogique en cours de validité : confère E2 (enseignement uniquement, jamais DP).",
+    trainingStatusUntil: "Livret valable jusqu'au",
+    trainingStatusSet: "Définir / renouveler",
+    trainingStatusRemove: "Retirer le statut",
+    badgeGp: "GP",
+    badgeRifap: "RIFAP",
+    quickRifap: "RIFAP validé aujourd'hui",
+  },
+
   impersonation: {
     banner: (name: string) => `Vous agissez en tant que ${name}`,
     stop: "Reprendre ma session",
   },
-
-  permissions: {
-    "club.manage": "Gérer le club",
-    "club.members.view": "Voir les membres",
-    "club.members.manage": "Gérer les membres",
-    "club.roles.manage": "Gérer les rôles",
-    "club.invitations.manage": "Gérer les invitations",
-    "club.impersonate": "Voir comme un membre",
-  } as Record<string, string>,
 
   modules: {
     members: "Membres",

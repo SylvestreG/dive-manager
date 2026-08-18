@@ -1,15 +1,12 @@
 use axum::http::{Method, StatusCode};
-use sea_orm::*;
 use serde_json::json;
 
-use crate::tenancy::entities::{club_roles, prelude::*};
-use crate::tenancy::services::seed;
 use crate::test_support::TestApp;
 
 #[tokio::test]
 async fn impersonation_permissions_and_switch_semantics() {
     let app = TestApp::new().await;
-    let (club, admin_role, _, member_role) = app.create_club("usi").await;
+    let (club, admin_role, member_role) = app.create_club("usi").await;
     let club_admin = app.create_user("admin@example.com", true, false).await;
     app.add_membership(club.id, club_admin.id, admin_role.id)
         .await;
@@ -61,17 +58,10 @@ async fn impersonation_permissions_and_switch_semantics() {
     assert_eq!(me["real_user"]["email"], "admin@example.com");
 
     // Sensitive actions refuse impersonating principals.
-    let instructor_role = ClubRoles::find()
-        .filter(club_roles::Column::ClubId.eq(club.id))
-        .filter(club_roles::Column::Name.eq(seed::ROLE_INSTRUCTOR))
-        .one(&app.state.db)
-        .await
-        .unwrap()
-        .unwrap();
     let (status, _) = app
         .request(
             Method::PUT,
-            &format!("/api/v1/clubs/usi/roles/{}/permissions", instructor_role.id),
+            &format!("/api/v1/clubs/usi/roles/{}/permissions", member_role.id),
             Some(&impersonation_token),
             Some(json!({ "permissions": [] })),
         )
@@ -122,7 +112,7 @@ async fn impersonation_permissions_and_switch_semantics() {
     assert_eq!(body["user"]["email"], "root@example.com");
 
     // A club admin of another club cannot impersonate into this club.
-    let (club_b, admin_role_b, _, _) = app.create_club("club-b").await;
+    let (club_b, admin_role_b, _) = app.create_club("club-b").await;
     let admin_b = app.create_user("admin-b@example.com", true, false).await;
     app.add_membership(club_b.id, admin_b.id, admin_role_b.id)
         .await;
@@ -161,8 +151,8 @@ async fn impersonation_permissions_and_switch_semantics() {
 #[tokio::test]
 async fn club_admin_impersonation_is_confined_to_the_club() {
     let app = TestApp::new().await;
-    let (club_a, admin_role_a, _, member_role_a) = app.create_club("club-a").await;
-    let (club_b, _, _, member_role_b) = app.create_club("club-b").await;
+    let (club_a, admin_role_a, member_role_a) = app.create_club("club-a").await;
+    let (club_b, _, member_role_b) = app.create_club("club-b").await;
     let admin_a = app.create_user("admin-a@example.com", true, false).await;
     app.add_membership(club_a.id, admin_a.id, admin_role_a.id)
         .await;

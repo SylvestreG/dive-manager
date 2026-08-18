@@ -12,9 +12,9 @@ import Profile from "./pages/Profile";
 import Audit from "./pages/club/Audit";
 import ClubLayout, { ClubIndex } from "./pages/club/ClubLayout";
 import Invitations from "./pages/club/Invitations";
+import MemberProfile from "./pages/club/MemberProfile";
 import Members from "./pages/club/Members";
 import Modules from "./pages/club/Modules";
-import Roles from "./pages/club/Roles";
 
 function RequireAuth() {
   if (!getToken()) return <Navigate to="/login" replace />;
@@ -38,8 +38,8 @@ export default function App() {
           <Route path="/clubs/:slug" element={<ClubLayout />}>
             <Route index element={<ClubIndex />} />
             <Route path="members" element={<Members />} />
+            <Route path="members/:userId" element={<MemberProfile />} />
             <Route path="invitations" element={<Invitations />} />
-            <Route path="roles" element={<Roles />} />
             <Route path="modules" element={<Modules />} />
             <Route path="audit" element={<Audit />} />
           </Route>

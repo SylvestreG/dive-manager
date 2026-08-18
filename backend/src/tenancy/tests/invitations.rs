@@ -21,6 +21,19 @@ async fn club_creation_seeds_and_admin_invitation_grants_admin_membership() {
     assert_eq!(club["slug"], "usi", "slug is normalized lowercase");
     let club_id = club["id"].as_str().unwrap();
 
+    // ADR-0007: exactly two seeded roles, and Membre starts with no
+    // permission at all (fail closed).
+    let (status, roles) = app
+        .request(Method::GET, "/api/v1/clubs/usi/roles", Some(&token), None)
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let roles = roles.as_array().unwrap();
+    let names: Vec<&str> = roles.iter().map(|r| r["name"].as_str().unwrap()).collect();
+    assert_eq!(names, ["Administrateur", "Membre"]);
+    let membre = roles.iter().find(|r| r["name"] == "Membre").unwrap();
+    assert_eq!(membre["is_admin"], false);
+    assert_eq!(membre["permissions"].as_array().unwrap().len(), 0);
+
     let (status, _) = app
         .request(
             Method::POST,
@@ -92,7 +105,7 @@ async fn club_creation_seeds_and_admin_invitation_grants_admin_membership() {
 #[tokio::test]
 async fn invitation_resend_rotates_the_token_and_revoke_kills_it() {
     let app = TestApp::new().await;
-    let (club, admin_role, _, member_role) = app.create_club("usi").await;
+    let (club, admin_role, member_role) = app.create_club("usi").await;
     let admin = app.create_user("admin@example.com", true, false).await;
     app.add_membership(club.id, admin.id, admin_role.id).await;
     let token = app.session_for(admin.id).await;
@@ -161,7 +174,7 @@ async fn invitation_resend_rotates_the_token_and_revoke_kills_it() {
 #[tokio::test]
 async fn direct_add_revokes_the_pending_invitation() {
     let app = TestApp::new().await;
-    let (club, admin_role, _, member_role) = app.create_club("usi").await;
+    let (club, admin_role, member_role) = app.create_club("usi").await;
     let admin = app.create_user("admin@example.com", true, false).await;
     app.add_membership(club.id, admin.id, admin_role.id).await;
     let token = app.session_for(admin.id).await;
@@ -217,7 +230,7 @@ async fn direct_add_revokes_the_pending_invitation() {
 #[tokio::test]
 async fn inviting_an_existing_member_conflicts() {
     let app = TestApp::new().await;
-    let (club, admin_role, _, member_role) = app.create_club("usi").await;
+    let (club, admin_role, member_role) = app.create_club("usi").await;
     let admin = app.create_user("admin@example.com", true, false).await;
     app.add_membership(club.id, admin.id, admin_role.id).await;
     let member = app.create_user("member@example.com", true, false).await;

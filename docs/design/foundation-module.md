@@ -179,7 +179,7 @@ clubs
 club_roles                                     -- per-club, seeded on club creation
   id            uuid PK
   club_id       uuid → clubs ON DELETE CASCADE
-  name          text NOT NULL                  -- 'Administrateur', 'Encadrant', 'Membre'
+  name          text NOT NULL                  -- 'Administrateur', 'Membre' (ADR-0007)
   is_admin      boolean NOT NULL DEFAULT false -- shortcut: full club permissions
   UNIQUE (club_id, name)
 
@@ -224,10 +224,12 @@ Notes:
 - **Global admin** (`users.is_global_admin`): platform management, club CRUD,
   can act in any club (every such cross-tenant action is audited). Not a club
   role — no membership required.
-- **Club role** via membership: seeded roles per club — Administrateur
-  (`is_admin`, all club permissions), Encadrant, Membre — permission sets
-  editable by the club admin (Fosse's GroupsPage UX, kept, but fail-closed
-  and per club).
+- **Club role** via membership: two seeded roles per club (ADR-0007) —
+  Administrateur (`is_admin`, all club permissions) and Membre (no permission
+  by default) — permission sets editable by the club admin (Fosse's
+  GroupsPage UX, kept, but fail-closed and per club). Instructor status is a
+  derived ffessm capability (teaching grade), never a role or a permission
+  source.
 
 ### Foundation permission catalogue (v1)
 

@@ -18,11 +18,30 @@ pub struct Person<'a> {
     pub certifications: &'a [Certification],
     pub statuses: &'a [TrainingStatus],
     pub birthdate: NaiveDate,
+    /// Person in a disability situation following the Handisub pathway
+    /// (MFT Handisub May 2025). Gates the PESH certifications only — the
+    /// EH teaching qualifications are for (any) instructors.
+    pub handisub: bool,
 }
 
 impl Person<'_> {
     pub fn holds(&self, cert: Certification) -> bool {
         self.certifications.contains(&cert)
+    }
+
+    /// True when the PESH pathway applies: explicit flag, or already inside
+    /// it (holds a PESH certification).
+    pub fn practices_handisub(&self) -> bool {
+        self.handisub
+            || self.certifications.iter().any(|c| {
+                matches!(
+                    c,
+                    Certification::Pesh6
+                        | Certification::Pesh12
+                        | Certification::Pesh20
+                        | Certification::Pesh40
+                )
+            })
     }
 
     pub fn holds_any(&self, certs: &[Certification]) -> bool {

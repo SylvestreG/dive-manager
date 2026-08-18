@@ -2,6 +2,7 @@ pub mod app;
 pub mod bootstrap;
 pub mod config;
 pub mod errors;
+pub mod ffessm_licence;
 pub mod identity;
 pub mod mailer;
 pub mod maintenance;
@@ -10,6 +11,7 @@ pub mod rate_limit;
 pub mod tenancy;
 #[cfg(test)]
 pub mod test_support;
+pub mod users;
 
 use std::sync::Arc;
 

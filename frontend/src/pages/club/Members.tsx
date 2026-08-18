@@ -21,9 +21,33 @@ import {
   TextInput,
 } from "../../components/ui";
 import { t } from "../../i18n/fr";
-import { api, setToken, type MembershipDto, type RoleDto } from "../../lib/api";
+import {
+  api,
+  setToken,
+  type MemberBadges,
+  type MemberListItem,
+  type RoleDto,
+} from "../../lib/api";
 import { translateApiError } from "../../lib/errors";
 import { can, useClub } from "./ClubLayout";
+
+/** Diving badges on the member row (users module). */
+function DivingBadges({ badges }: { badges: MemberBadges }) {
+  return (
+    <>
+      {badges.diver && <Badge tone="primary">{badges.diver}</Badge>}
+      {badges.teaching && <Badge tone="success">{badges.teaching}</Badge>}
+      {badges.gp && <Badge tone="success">{t.diving.badgeGp}</Badge>}
+      {badges.has_rifap && <Badge tone="neutral">{t.diving.badgeRifap}</Badge>}
+      {badges.medical_expired && (
+        <Badge tone="danger">{t.diving.medicalExpired}</Badge>
+      )}
+      {badges.medical_expired === null && (
+        <Badge tone="warning">{t.diving.medicalMissing}</Badge>
+      )}
+    </>
+  );
+}
 
 function MemberRow({
   membership,
@@ -32,7 +56,7 @@ function MemberRow({
   canManageRoles,
   canImpersonate,
 }: {
-  membership: MembershipDto;
+  membership: MemberListItem;
   slug: string;
   roles: RoleDto[];
   canManageRoles: boolean;
@@ -49,7 +73,7 @@ function MemberRow({
   const toggleStatus = useMutation({
     meta: { inlineError: true },
     mutationFn: () =>
-      api.club(slug).updateMembership(membership.id, {
+      api.club(slug).updateMembership(membership.membership_id, {
         status: suspended ? "active" : "suspended",
       }),
     onSuccess: refresh,
@@ -61,7 +85,9 @@ function MemberRow({
   const changeRole = useMutation({
     meta: { inlineError: true },
     mutationFn: (roleId: string) =>
-      api.club(slug).updateMembership(membership.id, { role_id: roleId }),
+      api
+        .club(slug)
+        .updateMembership(membership.membership_id, { role_id: roleId }),
     onSuccess: () => {
       setError(null);
       refresh();
@@ -80,9 +106,19 @@ function MemberRow({
     }
   };
 
+  const openProfile = () =>
+    navigate(`/clubs/${slug}/members/${membership.user.id}`);
+
   return (
     <Card>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      {/* The whole identity block opens the member sheet (CACI +
+          certifications live there) — a buried "Fiche" button was not
+          discoverable (product feedback 2026-08-18). */}
+      <button
+        type="button"
+        onClick={openProfile}
+        className="-m-2 flex w-full items-center justify-between gap-2 rounded-(--radius-control) p-2 text-left hover:bg-abysse-50"
+      >
         <div className="min-w-0">
           <div className="truncate font-semibold">
             {membership.user.first_name} {membership.user.last_name}
@@ -90,15 +126,26 @@ function MemberRow({
           <div className="truncate text-sm text-ink-soft">
             {membership.user.email}
           </div>
-          <div className="mt-1 flex gap-2">
+          <div className="mt-1 flex flex-wrap gap-2">
             <Badge tone={membership.is_admin ? "primary" : "neutral"}>
               {membership.role_name}
             </Badge>
             {suspended && <Badge tone="warning">{t.common.suspended}</Badge>}
+            <DivingBadges badges={membership.badges} />
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {canManageRoles && (
+        <span
+          aria-hidden
+          className="shrink-0 text-xl font-semibold text-ink-soft"
+        >
+          ›
+        </span>
+      </button>
+      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-hairline pt-3">
+        <Button variant="secondary" onClick={openProfile}>
+          {t.diving.memberOpenProfile}
+        </Button>
+        {canManageRoles && (
             <Select
               aria-label={t.club.members.changeRole}
               className="text-sm"
@@ -127,7 +174,6 @@ function MemberRow({
               {suspended ? t.club.members.reactivate : t.club.members.suspend}
             </Button>
           )}
-        </div>
       </div>
       {error && <p className="mt-2 text-sm text-danger-600">{error}</p>}
     </Card>
@@ -206,7 +252,7 @@ export default function Members() {
 
   const members = useQuery({
     queryKey: ["club", club.slug, "members", page],
-    queryFn: () => api.club(club.slug).members(page),
+    queryFn: () => api.club(club.slug).membersWithBadges(page),
     placeholderData: keepPreviousData,
   });
   const needRoles = canManageRoles || canIntake;
@@ -235,7 +281,7 @@ export default function Members() {
           </p>
           {members.data.items.map((membership) => (
             <MemberRow
-              key={membership.id}
+              key={membership.membership_id}
               membership={membership}
               slug={club.slug}
               roles={roles.data ?? []}

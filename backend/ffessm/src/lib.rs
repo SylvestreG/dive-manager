@@ -27,7 +27,8 @@ pub use aptitude::{DiverAptitude, GasAptitude, SupervisionGrade};
 pub use certification::Certification;
 pub use derive::{aptitudes, exercisable_aptitudes, Aptitudes, ExerciseRestriction, SCUBA_MIN_AGE};
 pub use eligibility::{
-    check_eligibility, eligible_next, requirements, EligibilityIssue, Requirement,
+    check_eligibility, covered_by, eligible_next, implied_certifications, is_redundant,
+    preparable_certifications, requirements, EligibilityIssue, Requirement,
 };
 pub use gas::{max_o2_fraction, nitrox_mod_meters, PPO2_MAX_BAR, PPO2_MIN_BAR};
 pub use palanquee::{

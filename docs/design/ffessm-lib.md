@@ -127,6 +127,46 @@ Chaque table est une constante documentée avec **sa source (fiche MFT +
 8. **Progression** — `eligible_next(&Person, on) -> Vec<Certification>`
    (remplace proprement le `getPreparingOptions` frontend de Fosse) et un
    ordre partiel `display_rank()` pour l'affichage « plus haut niveau ».
+   Affiné (retour produit 2026-08-18) :
+   - `implied_certifications` : fermeture des prérequis `Holds`/
+     `HoldsForDelivery` — détenir un N2 **prouve** le N1 ; les possessions
+     impliquées satisfont les prérequis et ne sont jamais proposées.
+   - `is_redundant` : exclut toute certification qui n'ajouterait **aucune
+     prérogative** (aptitudes plongeur/gaz, encadrement) — un N2 rend
+     PE12/PA12/PE40/PA20 sans objet, un MF1 rend l'Initiateur sans objet —
+     SAUF si elle garde une **valeur de chaîne** (prérequis strict d'une
+     certification encore utile : le Plongeur d'Or a toujours besoin du N1
+     pour viser le N2). Les qualifications hors matrices (RIFAP, TIV,
+     bronze/argent, EH1/EH2…) ne sont jamais redondantes.
+   - `Person.handisub` : les PESH ne sont proposés qu'aux personnes en
+     situation de handicap (flag, ou PESH déjà détenu). Les EH restent
+     ouverts à tous les encadrants.
+   - `Requirement::HoldsForDelivery` : condition d'examen, ne bloque pas
+     l'entrée en cursus (Initiateur : RIFAP exigé à l'examen — MFT déc.
+     2025 : stage initial dès 15 ans + PA20).
+   - `preparable_certifications` : liste pour le sélecteur « en
+     préparation » — mêmes exclusions, mais tolère les prérequis d'entrée
+     non encore acquis (le club décide), en excluant l'impossible
+     (`MaxAge` dépassé).
+   - **Absorption des modules** (produit 2026-08-18) : dans `eligible_next`,
+     quand un brevet complet atteignable **domine strictement** un module
+     (couvre tout ce qu'il apporterait, et plus), seul le brevet est
+     proposé — un N2 voit « N3 », pas « PA40 + PE60 » ; un N1 adulte voit
+     « N2 » ; un N1 de 14 ans voit « PE40 » (N2 à 15 ans). Exceptions :
+     hors-matrices (RIFAP, TIV…) et **PESH** (niveaux d'entrée choisis
+     selon les capacités de la personne, pas une échelle de modules).
+   - **Conditions de délivrance** (`HoldsForDelivery`, confirmé produit
+     2026-08-18 : « il le faut pour être certifié, pas pour commencer la
+     formation ») : RIFAP pour Initiateur/N3/N4/N5/MF1/MF2/EH2 ; permis
+     côtier pour MF1/MF2 ; PN-C pour MF2. Remontées « à vérifier », ne
+     bloquent jamais la proposition — un N4 voit donc MF1, N5 et
+     Initiateur.
+   - L'implication traverse `HoldsAny` par **intersection des fermetures**
+     des alternatives : « N2 ou PA40 » prouve le N2 (PA40 exige N2) ; « N4
+     ou BPJEPS » ne prouve rien. Un N4 nu en base implique N3→N2→N1+RIFAP.
+   - La vue de couverture (redondance + absorption) inclut les **contextes
+     DP** : le N5 n'est pas « un moins bon MF1 » (sa valeur est le DP
+     exploration) et n'est ni redondant ni absorbé pour un N4.
 
 ## 4. Versionnage réglementaire
 

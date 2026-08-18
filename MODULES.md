@@ -28,16 +28,22 @@ fail-open; see ADR-0003).
 
 ## Business modules (club-toggleable where sensible)
 
-### `members` — status: planned
-Per-club member profiles: identity link, phone, structured diving levels
-(FFESSM ladder), preparing level, default gear preferences. Level-cascade and
-next-preparable-level rules live here. Depends on `tenancy`.
-Fosse source: `people`, `diving_level` comma-blob (to be normalized).
+### `users` — status: **implemented** (`backend/src/users/`; replaces the planned `members` module)
+USER-GLOBAL diving profile (product decision 2026-08-17: experience,
+certifications and levels belong to the person, not to a club): birthdate,
+phone, licence/instructor numbers, CACI date (recorded by club staff), gear
+preferences, certifications with provenance (declared < recorded = imported <
+validated, keep-or-raise rule), stagiaire-MF1 status, instructor stamp
+(E2+, PNG/JPEG ≤ 512 KiB). All prerogatives (aptitudes, supervision, DP, gas,
+progression) are DERIVED at read time by the pure `ffessm` crate — never
+stored. Club visibility = active membership (404 otherwise). Depends on
+`tenancy` + `ffessm`. Design: `docs/design/users-module.md`.
+Fosse source: `people`, `diving_level` comma-blob (normalized here).
 
 ### `activities` — status: planned
 Pool sessions (fosses), sorties and their dives, dive-director assignments
 (single mechanism). Location-driven behavior comes from club config, not
-hardcoded strings. Depends on `members`.
+hardcoded strings. Depends on `users`.
 Fosse source: `sessions`, `sorties`, `dive_directors`.
 
 ### `registrations` — status: planned
@@ -58,7 +64,7 @@ Fosse source: `rotations`, `palanquees`, `palanquee_members`,
 Per-club competency tree (level → domain → module → skill), validation stages,
 skill validations **with history**, monotonic-progression rule, min-validator
 gate, level documents (PDF templates + stamp positions + filled generation),
-validation audit. Depends on `members`.
+validation audit. Depends on `users`.
 Fosse source: `competency_*`, `validation_stages`, `skill_validations`,
 `level_documents`, `skill_document_positions`.
 
@@ -78,10 +84,13 @@ Fosse source: `email_jobs`, `services/email.rs`, frontend EmailsPage cockpit.
 ## Module dependency graph
 
 ```
-identity ← tenancy ← members ← activities ← registrations ← palanquees
-                          ↑                        ↑    ↑
-                   competencies             imports    notifications
+identity ← tenancy ← users ← activities ← registrations ← palanquees
+              (ffessm) ↑ ↑                        ↑    ↑
+                 competencies              imports    notifications
 ```
+
+The `ffessm` crate (`backend/ffessm/`) is a pure domain library (no I/O, no
+database) consumed by `users` and later by `palanquees`/`competencies`.
 
 ## Not planned (Fosse has none; add only on real demand)
 

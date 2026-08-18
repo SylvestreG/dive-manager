@@ -42,6 +42,7 @@ mod tests {
             certifications: certs,
             statuses: &[],
             birthdate: NaiveDate::from_ymd_opt(1990, 1, 1).unwrap(),
+            handisub: false,
         }
     }
 
