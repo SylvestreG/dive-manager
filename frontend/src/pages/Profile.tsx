@@ -37,6 +37,80 @@ import { decodeQrFromFile } from "../lib/qr";
 import { useMe } from "../lib/session";
 import { Badge } from "../components/ui";
 
+/** Identity (first/last name) — editable: bootstrap accounts start with a
+ * name derived from the email, and the licence import matches on it. */
+function IdentityCard({
+  firstName,
+  lastName,
+  email,
+}: {
+  firstName: string;
+  lastName: string;
+  email: string;
+}) {
+  const queryClient = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [first, setFirst] = useState(firstName);
+  const [last, setLast] = useState(lastName);
+  const [error, setError] = useState<string | null>(null);
+  const save = useMutation({
+    meta: { inlineError: true },
+    mutationFn: () => api.updateMyIdentity(first, last),
+    onSuccess: () => {
+      setError(null);
+      setEditing(false);
+      queryClient.invalidateQueries({ queryKey: ["me"] });
+    },
+    onError: (e) => setError(translateApiError(e)),
+  });
+
+  return (
+    <Card>
+      {editing ? (
+        <div className="flex flex-col gap-3">
+          <Field label={t.common.firstName}>
+            <TextInput value={first} onChange={(e) => setFirst(e.target.value)} />
+          </Field>
+          <Field label={t.common.lastName}>
+            <TextInput value={last} onChange={(e) => setLast(e.target.value)} />
+          </Field>
+          <div className="flex gap-2">
+            <Button
+              disabled={!first.trim() || !last.trim() || save.isPending}
+              onClick={() => save.mutate()}
+            >
+              {t.common.save}
+            </Button>
+            <Button variant="secondary" onClick={() => setEditing(false)}>
+              {t.common.cancel}
+            </Button>
+          </div>
+          <FormFeedback error={error} />
+        </div>
+      ) : (
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <div className="truncate font-bold">
+              {firstName} {lastName}
+            </div>
+            <div className="truncate text-sm text-ink-soft">{email}</div>
+          </div>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              setFirst(firstName);
+              setLast(lastName);
+              setEditing(true);
+            }}
+          >
+            {t.profile.editIdentity}
+          </Button>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 /** Scan/paste MY official FFESSM licence to auto-fill profile + brevets.
  * Self-service (product decision 2026-08-18): the federation is the source
  * of truth, provenance `imported`. */
@@ -276,12 +350,11 @@ export default function Profile() {
           <IncompleteBanner message={t.diving.incompleteBanner} />
         </div>
       )}
-      <Card>
-        <div className="font-bold">
-          {me.user.first_name} {me.user.last_name}
-        </div>
-        <div className="text-sm text-ink-soft">{me.user.email}</div>
-      </Card>
+      <IdentityCard
+        firstName={me.user.first_name}
+        lastName={me.user.last_name}
+        email={me.user.email}
+      />
 
       {/* Each member imports their OWN licence (product decision
           2026-08-18) — first thing on the page, it fills everything. */}

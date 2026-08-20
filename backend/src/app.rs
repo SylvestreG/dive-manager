@@ -32,6 +32,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/auth/stop-impersonation", post(auth::stop_impersonation))
         .route("/me", get(me::get_me))
         .route("/me/password", put(me_password::set_my_password))
+        .route("/me/identity", put(me_password::set_my_identity))
         // Self-service diving profile (user-global, no club in the URL).
         // Certifications are staff-entered only (product decision
         // 2026-08-18): no /me/certifications endpoints.

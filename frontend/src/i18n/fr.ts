@@ -145,6 +145,7 @@ export const t = {
       "8 caractères minimum. Le nouveau mot de passe remplace l'ancien.",
     passwordSaved: "Mot de passe enregistré.",
     passwordTooShort: "Le mot de passe doit contenir au moins 8 caractères.",
+    editIdentity: "Modifier",
     logout: "Se déconnecter",
     logoutAll: "Se déconnecter de tous mes appareils",
   },

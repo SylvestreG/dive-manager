@@ -96,6 +96,34 @@ pub async fn set_global_admin<C: ConnectionTrait>(
     Ok(active.update(conn).await?)
 }
 
+
+/// Self-service identity fix: first/last name only (bootstrap admins are
+/// created with a name derived from their email, and invitation typos
+/// happen — the person is the authority on their own name).
+pub async fn update_names<C: ConnectionTrait>(
+    conn: &C,
+    user: users::Model,
+    first_name: &str,
+    last_name: &str,
+) -> Result<users::Model, AppError> {
+    let first_name = first_name.trim();
+    let last_name = last_name.trim();
+    if first_name.is_empty() || last_name.is_empty() {
+        return Err(AppError::Validation(
+            "first and last names cannot be empty".to_string(),
+        ));
+    }
+    if first_name.len() > 100 || last_name.len() > 100 {
+        return Err(AppError::Validation("name too long".to_string()));
+    }
+    let mut active: users::ActiveModel = user.into();
+    active.first_name = Set(first_name.to_string());
+    active.last_name = Set(last_name.to_string());
+    active.updated_at = Set(now());
+    Ok(active.update(conn).await?)
+}
+
+
 /// Platform-level enable/disable. `invited` is a lifecycle state owned by the
 /// invitation flow and cannot be set through here.
 pub async fn set_status<C: ConnectionTrait>(

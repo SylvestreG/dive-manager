@@ -315,6 +315,13 @@ export const api = {
   me: () => request<MeResponse>("GET", "/me"),
   setMyPassword: (password: string) =>
     request<unknown>("PUT", "/me/password", { password }),
+  // Own first/last name (bootstrap accounts start with an email-derived
+  // name; it also feeds the licence-import identity binding).
+  updateMyIdentity: (firstName: string, lastName: string) =>
+    request<UserDto>("PUT", "/me/identity", {
+      first_name: firstName,
+      last_name: lastName,
+    }),
 
   myProfile: () => request<ProfileResponse>("GET", "/me/profile"),
   updateMyProfile: (data: ProfileFields) =>

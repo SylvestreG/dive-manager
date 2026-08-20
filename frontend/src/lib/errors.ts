@@ -62,7 +62,10 @@ const KNOWN_MESSAGES: Record<string, string> = {
   "invalid licence link or number": "Lien ou numéro de licence invalide.",
   "licence not found or invalid key": "Licence introuvable ou clé invalide.",
   "licence holder does not match your account":
-    "Cette licence ne correspond pas à votre compte (nom ou date de naissance différents).",
+    "Cette licence ne correspond pas à votre compte (nom ou date de naissance différents). Vérifiez le prénom et le nom de votre compte en haut de cette page.",
+  "first and last names cannot be empty":
+    "Le prénom et le nom sont obligatoires.",
+  "name too long": "Nom trop long.",
 };
 
 export function translateApiError(error: unknown): string {
