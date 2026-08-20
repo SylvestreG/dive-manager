@@ -73,11 +73,25 @@ using Fosse). Scope and checklist: `docs/design/migration-strategy.md`.
   - [x] ADR-0007 implemented: seed = Administrateur+Membre only, dev-data
         Encadrant roles removed (members reassigned to Membre), tests build
         staff personas via an explicit `create_role` helper
+- [x] **`competencies` module** (2026-08-20) — design approved + implemented
+      (docs/design/competencies-module.md, ADR-0008): platform-global tree,
+      fixed stages (vu/à perfectionner/validé, "en mer" above N1), grade per
+      level (E1<N2, E2<N3, E3<N4, E4+), user-global validations with
+      append-only history, level documents + stamp editor + flattened PDF.
+      Backend 106 lib tests green (30 new); frontend 15 tests green (4 new
+      + fixed the Node-26 localStorage/vitest breakage); Modules tab removed
+      from the club UI (registry kept server-side). **Awaiting
+      `dive-manager-review` + product-owner validation before commit.**
+      Deferred (per design): stamp image on the PDF, "eligible for delivery"
+      indicator, sortie group builder (needs `activities`).
 - [ ] Importer skeleton + first real-data reconciliation report (includes the
-      `diving_level` comma-blob → certification codes mapping audit, and CSV
-      bulk entry of CACI/RIFAP dates — product decision 2026-08-17)
-- [ ] Then `activities` → `registrations` → `palanquees` → `competencies` →
-      `imports` → `notifications`, per `MODULES.md` dependencies
+      `diving_level` comma-blob → certification codes mapping audit, CSV
+      bulk entry of CACI/RIFAP dates — product decision 2026-08-17 — and the
+      Fosse competencies mapping fixed in competencies-module.md §10: stages →
+      fixed ladder, min_validator_level dropped, legacy flat table checked
+      then dropped)
+- [ ] Then `activities` → `registrations` → `palanquees` → `imports` →
+      `notifications`, per `MODULES.md` dependencies
 
 ## Open questions for the product owner
 

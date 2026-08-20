@@ -275,6 +275,22 @@ export default function Platform() {
         </div>
       )}
 
+      <SectionTitle>{t.competencies.adminTitle}</SectionTitle>
+      <div className="flex flex-wrap gap-2">
+        <Link
+          to="/platform/competencies"
+          className="inline-flex min-h-11 items-center rounded-(--radius-control) border border-hairline bg-white px-4 text-[15px] font-semibold text-abysse-700 hover:bg-abysse-50"
+        >
+          🎓 {t.competencies.adminTitle}
+        </Link>
+        <Link
+          to="/platform/level-documents"
+          className="inline-flex min-h-11 items-center rounded-(--radius-control) border border-hairline bg-white px-4 text-[15px] font-semibold text-abysse-700 hover:bg-abysse-50"
+        >
+          📄 {t.competencies.documentsTitle}
+        </Link>
+      </div>
+
       <GlobalAdmins />
     </>
   );

@@ -23,6 +23,22 @@ pub async fn find_active(
         .await?)
 }
 
+/// All ACTIVE member user ids of a club — bounded by club size (a few
+/// hundred rows); callers filter/join on user-global data afterwards.
+pub async fn active_user_ids(
+    db: &DatabaseConnection,
+    club_id: Uuid,
+) -> Result<Vec<Uuid>, AppError> {
+    Ok(Memberships::find()
+        .filter(memberships::Column::ClubId.eq(club_id))
+        .filter(memberships::Column::Status.eq(memberships::STATUS_ACTIVE))
+        .all(db)
+        .await?
+        .into_iter()
+        .map(|m| m.user_id)
+        .collect())
+}
+
 pub struct MembershipPage {
     pub rows: Vec<(memberships::Model, Option<users::Model>)>,
     pub roles: Vec<club_roles::Model>,

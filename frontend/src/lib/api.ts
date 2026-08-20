@@ -297,6 +297,116 @@ export interface MemberListItem {
   badges: MemberBadges;
 }
 
+// ---- competencies module (global tree, user-global validations) ----
+
+/** The fixed validation ladder (hardcoded backend-side, no stage table). */
+export type StageCode = "vu" | "a_perfectionner" | "valide";
+
+export interface LevelRules {
+  certification: string;
+  label: string;
+  /** Above N1: the final validation necessarily happens at sea. */
+  sea_validation: boolean;
+  /** "E1".."E4" — fixed function of the level. */
+  required_validator_grade: string;
+  stages: StageCode[];
+}
+export interface LevelSummary extends LevelRules {
+  domains_count: number;
+  has_document: boolean;
+  page_count: number | null;
+}
+export interface CompetencyProgress {
+  total: number;
+  validated: number;
+  in_progress: number;
+  not_started: number;
+  percentage: number;
+}
+export interface UserRef {
+  id: string;
+  first_name: string;
+  last_name: string;
+}
+export interface SkillValidationView {
+  stage: StageCode;
+  validated_at: string;
+  validated_by: UserRef | null;
+  notes: string | null;
+}
+export interface SkillView {
+  id: string;
+  name: string;
+  description: string | null;
+  validation: SkillValidationView | null;
+}
+export interface ModuleView {
+  id: string;
+  name: string;
+  progress: CompetencyProgress;
+  skills: SkillView[];
+}
+export interface DomainView {
+  id: string;
+  name: string;
+  progress: CompetencyProgress;
+  modules: ModuleView[];
+}
+export interface CompetencyView {
+  level: LevelRules;
+  progress: CompetencyProgress;
+  domains: DomainView[];
+}
+export interface TreeSkill {
+  id: string;
+  name: string;
+  description: string | null;
+  sort_order: number;
+}
+export interface TreeModule {
+  id: string;
+  name: string;
+  sort_order: number;
+  skills: TreeSkill[];
+}
+export interface TreeDomain {
+  id: string;
+  name: string;
+  sort_order: number;
+  modules: TreeModule[];
+}
+export interface TreeResponse {
+  level: LevelRules;
+  domains: TreeDomain[];
+}
+export interface CompetencyStudent {
+  user: UserDto;
+  progress: CompetencyProgress;
+}
+export interface StudentsResponse extends Page<CompetencyStudent> {
+  level: LevelRules;
+}
+export interface LevelDocumentInfo {
+  certification: string;
+  file_name: string;
+  page_count: number;
+}
+export interface StampPosition {
+  skill_id: string;
+  page: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  font_size: number;
+  /** Template re-uploaded with fewer pages: shown by the editor, skipped at
+   * generation. */
+  out_of_range: boolean;
+}
+export interface CascadeImpact {
+  validations_count: number;
+}
+
 // ---------- endpoints ----------
 
 export const api = {
@@ -344,6 +454,112 @@ export const api = {
     request<SessionResponse>("POST", `/auth/invitations/${token}/accept`, {
       password: password || undefined,
     }),
+
+  // Global competency referential (platform-global tree; validations follow
+  // the user across clubs — product decision 2026-08-19).
+  competencies: {
+    levels: () => request<LevelSummary[]>("GET", "/competencies/levels"),
+    tree: (certification: string) =>
+      request<TreeResponse>(
+        "GET",
+        `/competencies/tree?certification=${encodeURIComponent(certification)}`,
+      ),
+    my: (certification?: string) =>
+      request<CompetencyView>(
+        "GET",
+        certification
+          ? `/me/competencies?certification=${encodeURIComponent(certification)}`
+          : "/me/competencies",
+      ),
+    myDocument: (certification?: string) =>
+      requestBlob(
+        certification
+          ? `/me/competencies/document?certification=${encodeURIComponent(certification)}`
+          : "/me/competencies/document",
+      ),
+
+    // Referential management — real global admins only.
+    createDomain: (body: { certification: string; name: string }) =>
+      request<TreeDomain>("POST", "/competencies/domains", body),
+    updateDomain: (
+      domainId: string,
+      body: { certification: string; name: string; sort_order: number },
+    ) => request<TreeDomain>("PUT", `/competencies/domains/${domainId}`, body),
+    domainImpact: (domainId: string) =>
+      request<CascadeImpact>("GET", `/competencies/domains/${domainId}/impact`),
+    deleteDomain: (domainId: string) =>
+      request<unknown>("DELETE", `/competencies/domains/${domainId}`),
+    createModule: (body: { domain_id: string; name: string }) =>
+      request<TreeModule>("POST", "/competencies/modules", body),
+    updateModule: (
+      moduleId: string,
+      body: { name: string; sort_order: number },
+    ) => request<TreeModule>("PUT", `/competencies/modules/${moduleId}`, body),
+    moduleImpact: (moduleId: string) =>
+      request<CascadeImpact>("GET", `/competencies/modules/${moduleId}/impact`),
+    deleteModule: (moduleId: string) =>
+      request<unknown>("DELETE", `/competencies/modules/${moduleId}`),
+    createSkill: (body: {
+      module_id: string;
+      name: string;
+      description?: string | null;
+    }) => request<TreeSkill>("POST", "/competencies/skills", body),
+    updateSkill: (
+      skillId: string,
+      body: { name: string; description: string | null; sort_order: number },
+    ) => request<TreeSkill>("PUT", `/competencies/skills/${skillId}`, body),
+    skillImpact: (skillId: string) =>
+      request<CascadeImpact>("GET", `/competencies/skills/${skillId}/impact`),
+    deleteSkill: (skillId: string) =>
+      request<unknown>("DELETE", `/competencies/skills/${skillId}`),
+
+    // Level documents + stamp positions — real global admins only.
+    uploadDocument: (
+      certification: string,
+      body: { file_name: string; pdf_base64: string },
+    ) =>
+      request<LevelDocumentInfo>(
+        "PUT",
+        `/competencies/levels/${encodeURIComponent(certification)}/document`,
+        body,
+      ),
+    downloadDocument: (certification: string) =>
+      requestBlob(
+        `/competencies/levels/${encodeURIComponent(certification)}/document`,
+      ),
+    deleteDocument: (certification: string) =>
+      request<unknown>(
+        "DELETE",
+        `/competencies/levels/${encodeURIComponent(certification)}/document`,
+      ),
+    positions: (certification: string) =>
+      request<StampPosition[]>(
+        "GET",
+        `/competencies/levels/${encodeURIComponent(certification)}/positions`,
+      ),
+    savePosition: (
+      certification: string,
+      skillId: string,
+      body: {
+        page: number;
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+        font_size?: number;
+      },
+    ) =>
+      request<unknown>(
+        "PUT",
+        `/competencies/levels/${encodeURIComponent(certification)}/positions/${skillId}`,
+        body,
+      ),
+    deletePosition: (certification: string, skillId: string) =>
+      request<unknown>(
+        "DELETE",
+        `/competencies/levels/${encodeURIComponent(certification)}/positions/${skillId}`,
+      ),
+  },
 
   platform: {
     listClubs: (page = 1) =>
@@ -449,6 +665,45 @@ export const api = {
         `/clubs/${slug}/members/${userId}/training-status`,
         { stagiaire_mf1_valid_until: validUntil },
       ),
+    // Competencies module: students preparing a level, member competency
+    // sheet, skill validations, filled level document.
+    competencyStudents: (certification: string, page = 1) =>
+      request<StudentsResponse>(
+        "GET",
+        `/clubs/${slug}/competencies/students?certification=${encodeURIComponent(certification)}&page=${page}`,
+      ),
+    memberCompetencies: (userId: string, certification: string) =>
+      request<CompetencyView>(
+        "GET",
+        `/clubs/${slug}/members/${userId}/competencies?certification=${encodeURIComponent(certification)}`,
+      ),
+    memberCompetenciesDocument: (userId: string, certification: string) =>
+      requestBlob(
+        `/clubs/${slug}/members/${userId}/competencies/document?certification=${encodeURIComponent(certification)}`,
+      ),
+    putSkillValidation: (
+      userId: string,
+      skillId: string,
+      body: {
+        stage: StageCode;
+        validated_at?: string;
+        notes?: string;
+        /** Real global admins only: attribute the validation to a named
+         * instructor ("valider au nom d'un encadrant"). */
+        validated_by_user_id?: string;
+      },
+    ) =>
+      request<CompetencyView>(
+        "PUT",
+        `/clubs/${slug}/members/${userId}/skill-validations/${skillId}`,
+        body,
+      ),
+    deleteSkillValidation: (userId: string, skillId: string) =>
+      request<CompetencyView>(
+        "DELETE",
+        `/clubs/${slug}/members/${userId}/skill-validations/${skillId}`,
+      ),
+
     memberStamp: (userId: string) =>
       requestBlob(`/clubs/${slug}/members/${userId}/stamp`),
     putMemberStamp: (userId: string, imageBase64: string) =>

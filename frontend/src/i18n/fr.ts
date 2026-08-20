@@ -6,6 +6,7 @@ export const t = {
   nav: {
     home: "Accueil",
     club: "Mon club",
+    competencies: "Compétences",
     platform: "Plateforme",
     profile: "Profil",
   },
@@ -79,8 +80,8 @@ export const t = {
     switch: "Changer de club",
     tabs: {
       members: "Membres",
+      competencies: "Compétences",
       invitations: "Invitations",
-      modules: "Modules",
       audit: "Journal",
     },
     members: {
@@ -103,10 +104,6 @@ export const t = {
       revoke: "Révoquer",
       expires: "Expire le",
       sent: "Invitation envoyée.",
-    },
-    modules: {
-      title: "Modules du club",
-      hint: "Activez les fonctionnalités utilisées par votre club.",
     },
     audit: {
       title: "Journal d'activité",
@@ -278,13 +275,101 @@ export const t = {
     stop: "Reprendre ma session",
   },
 
-  modules: {
-    members: "Membres",
-    activities: "Activités (fosses & sorties)",
-    registrations: "Inscriptions & questionnaires",
-    palanquees: "Palanquées",
-    competencies: "Compétences",
-    imports: "Imports CSV",
-    notifications: "Notifications & emails",
-  } as Record<string, string>,
+  competencies: {
+    myTitle: "Mes compétences",
+    stages: {
+      vu: "Vu",
+      a_perfectionner: "À perfectionner",
+      valide: "Validé",
+      valide_mer: "Validé en mer",
+      not_started: "Non commencé",
+    } as Record<string, string>,
+    stageOf: (code: string, sea: boolean) =>
+      code === "valide" && sea ? "Validé en mer" : (t.competencies.stages[code] ?? code),
+    legend: "Étapes de validation",
+    seaRule:
+      "Au-dessus du Niveau 1, la validation finale se fait obligatoirement en mer.",
+    progress: (validated: number, total: number) =>
+      `${validated}/${total} validés`,
+    progressDetail: (v: number, p: number, n: number) =>
+      `${v} validés • ${p} en cours • ${n} à faire`,
+    preparing: (label: string) => `En préparation : ${label}`,
+    validatedBy: (name: string) => `par ${name}`,
+    validatedOn: (date: string) => `le ${date}`,
+    downloadPdf: "Télécharger le document (PDF)",
+    emptyNoPreparation:
+      "Aucun niveau en préparation. Contactez un encadrant ou un administrateur de votre club pour configurer votre formation.",
+    emptyNoTree:
+      "Le référentiel de ce niveau n'est pas encore défini.",
+    explainerTitle: "Comment ça marche ?",
+    explainer:
+      "Vos acquis sont validés par les encadrants au fil des séances (piscine, fosse, mer). Chaque acquis passe par les étapes Vu → À perfectionner → Validé. Quand tout est validé, vous pouvez passer votre niveau !",
+
+    studentsTitle: "Élèves en préparation",
+    studentsLevel: "Niveau préparé",
+    noStudents: "Aucun élève ne prépare ce niveau dans ce club.",
+    openSheet: "Voir la progression",
+    sheetTitle: (name: string) => `Compétences — ${name}`,
+    requiredGrade: (grade: string) =>
+      `Validation réservée aux encadrants ${grade} et plus.`,
+    validateConfirmTitle: "Confirmer la validation",
+    validateConfirm: (skill: string, stage: string) =>
+      `Passer « ${skill} » à l'étape « ${stage} » ?`,
+    validateIrreversible:
+      "Attention : une étape ne peut pas revenir en arrière (seul un administrateur global peut corriger).",
+    validateSeaReminder:
+      "Ce niveau se valide en mer : ne validez cette étape finale qu'en milieu naturel.",
+    notes: "Notes (facultatif)",
+    validatedToast: "Validation enregistrée.",
+    deleteValidation: "Supprimer la validation",
+    deleteConfirm: (skill: string) =>
+      `Supprimer la validation de « ${skill} » ? L'historique est conservé.`,
+
+    adminTitle: "Référentiel de compétences",
+    adminHint:
+      "Référentiel global de la plateforme : niveaux → domaines → modules → acquis. Les étapes de validation sont fixes (Vu → À perfectionner → Validé).",
+    level: "Niveau",
+    domain: "Domaine",
+    module: "Module",
+    skill: "Acquis",
+    addDomain: "Ajouter un domaine",
+    addModule: "Ajouter un module",
+    addSkill: "Ajouter un acquis",
+    skillDescription: "Description (aide affichée aux encadrants)",
+    name: "Nom",
+    edit: "Modifier",
+    delete: "Supprimer",
+    deleteImpact: (n: number) =>
+      n === 0
+        ? "Aucune validation de membre ne sera supprimée."
+        : n === 1
+          ? "1 validation de membre sera définitivement supprimée !"
+          : `${n} validations de membres seront définitivement supprimées !`,
+    deleteTreeConfirm: (kind: string, name: string) =>
+      `Supprimer ${kind} « ${name} » et tout son contenu ?`,
+
+    documentsTitle: "Documents de niveau",
+    documentsHint:
+      "Un template PDF par niveau ; placez les cases de tampon sur le document, elles seront remplies avec les validations finales.",
+    upload: "Téléverser un PDF",
+    replace: "Remplacer le PDF",
+    deleteDocument: "Supprimer le document",
+    deleteDocumentConfirm: (level: string) =>
+      `Supprimer le document du niveau ${level} ? Les positions de tampon seront supprimées avec lui.`,
+    pages: (n: number) => (n === 1 ? "1 page" : `${n} pages`),
+    noDocument: "Aucun document",
+    positionsPlaced: (n: number) => `Placés (${n})`,
+    positionsUnplaced: (n: number) => `À placer (${n})`,
+    place: "Placer",
+    placing: (skill: string) =>
+      `Mode placement : dessinez un rectangle sur le PDF pour « ${skill} ».`,
+    positionSaved: "Position enregistrée.",
+    positionDeleted: "Position supprimée.",
+    outOfRange: "Hors page",
+    zoom: "Zoom",
+    page: (p: number, total: number) => `Page ${p} / ${total}`,
+    editorHelp:
+      "Glissez pour déplacer une case • poignées d'angle pour redimensionner • éditeur utilisable à la souris (ordinateur).",
+    documentUploaded: "Document téléversé.",
+  },
 };

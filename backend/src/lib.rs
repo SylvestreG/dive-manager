@@ -1,5 +1,6 @@
 pub mod app;
 pub mod bootstrap;
+pub mod competencies;
 pub mod config;
 pub mod errors;
 pub mod ffessm_licence;

@@ -114,6 +114,7 @@ export default function AppShell() {
     ...(defaultClub
       ? [{ to: `/clubs/${defaultClub}`, label: t.nav.club, icon: "🤿", end: false }]
       : []),
+    { to: "/competencies", label: t.nav.competencies, icon: "🎓", end: false },
     // Platform tab: real global admins only — and hidden while impersonating
     // (platform endpoints refuse impersonating principals anyway).
     ...(!me.impersonating && me.user.is_global_admin

@@ -89,17 +89,18 @@ export default function ClubLayout() {
       show: can(club, "club.members.view") || certifiedInstructor,
     },
     {
+      to: "competencies",
+      label: t.club.tabs.competencies,
+      show: can(club, "club.members.view") || certifiedInstructor,
+    },
+    {
       to: "invitations",
       label: t.club.tabs.invitations,
       show: can(club, "club.invitations.manage"),
     },
-    // No Roles tab (ADR-0007 follow-up, 2026-08-18): two fixed roles only —
-    // the permission engine stays server-side for support/API use.
-    {
-      to: "modules",
-      label: t.club.tabs.modules,
-      show: can(club, "club.manage"),
-    },
+    // No Roles tab (ADR-0007 follow-up, 2026-08-18) and no Modules tab
+    // (product decision 2026-08-19: core/foundation only for now) — both
+    // engines stay server-side for support/API use.
     { to: "audit", label: t.club.tabs.audit, show: can(club, "club.manage") },
   ].filter((tab) => tab.show);
 

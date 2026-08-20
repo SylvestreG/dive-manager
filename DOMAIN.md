@@ -56,12 +56,14 @@ New concepts required by multi-tenancy are marked ⊕.
   constraints (unique numbers, enum roles, enum gas).
 - **Dive director assignment** — ONE mechanism (Fosse has two: a boolean flag
   for fosse sessions, a table for sortie dives with max 4). Unify.
-- **Competency tree** — Level → Domain → Module → Skill, per club (clubs
-  organize training differently), with validation stages (ordered, final flag)
-  and per-(person, skill) validation state **plus history** (Fosse keeps only
-  the latest state while calling it an audit log).
-- **Level document** — per-level PDF template + per-skill stamp positions;
-  generated filled PDF for a member.
+- **Competency tree** — Level → Domain → Module → Skill, **platform-global**
+  (product decision 2026-08-19: a foundation like the FFESSM referential,
+  managed by global admins; supersedes the per-club plan), with **fixed**
+  validation stages and per-(user, skill) validation state **plus an
+  append-only history** (Fosse keeps only the latest state while calling it
+  an audit log). Validations follow the user across clubs.
+- **Level document** — per-level **global** PDF template + per-skill stamp
+  positions; generated filled PDF for a member.
 - **Magic link / public tokens** — tokenized anonymous access for
   questionnaire submission and session recaps. Must be scoped to exactly one
   registration (Fosse bug: token resolves by person only) and must NOT leak
@@ -136,17 +138,26 @@ New concepts required by multi-tenancy are marked ⊕.
 - ⚠ Fosse computes this in the backend summary AND recomputes divergently in
   4 frontend locations; the backend must be the single source of truth.
 
-### Competencies
-- Tree: Level → Domain → Module → Skill; skill has `min_validator_level`.
-- Validator must hold a level ≥ the skill's `min_validator_level`.
-- Progression is monotonic: stage can only advance; going backwards or
-  deleting requires a real (non-impersonating) admin.
-- Only final-stage validations count as "validated" in progress stats and
-  appear on the generated level PDF.
-- Preparing level: a member prepares at most one level, constrained to the next
-  step of the ladder (PESH path: PESH6 → PESH12 or N1).
-- Level cascade: validating a level implies the lower ones (frontend-only in
-  Fosse — must become a domain rule).
+### Competencies (as implemented, 2026-08-19/20 — supersedes Fosse's rules)
+- Tree: Level → Domain → Module → Skill, platform-global.
+- **Fixed stages** (no table, no editor): `vu → à perfectionner → validé`.
+  N1 and below: any environment; above N1 the final validation is
+  necessarily **at sea** (label "Validé en mer", same stage).
+- **Required validator grade is a function of the level** (not per skill):
+  E1 validates < N2, E2 < N3, E3 < N4, E4 beyond — compared to the DERIVED
+  certified teaching grade (ADR-0007; the stagiaire MF1 status grants
+  nothing). Validator and diver must share an active club membership.
+- Progression is monotonic: a stage can only advance (or re-stamp the same
+  stage); going backwards or deleting requires a REAL global admin. Every
+  write appends an immutable, denormalized history event.
+- No self-validation; validation dates cannot be in the future; competency
+  writes are refused while impersonating.
+- Only final-stage validations count as "validated" in progress stats
+  (weighted percentage, single server-side formula) and appear on the
+  generated level PDF (flattened text, not removable annotations).
+- Preparing level: a member prepares at most one level (users module rules).
+- Level cascade: validating a level implies the lower ones — covered by the
+  users module (`ffessm::covered_by` certification tree).
 
 ### Impersonation
 - Global/club admin can impersonate a member; UI must make it unmistakable;

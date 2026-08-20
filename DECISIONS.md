@@ -218,3 +218,59 @@ holds `members.manage`); an instructor joining a second club sees its
 members too; revoking means suspending the membership or removing the
 certification. Implemented as a domain rule inside the users-module read
 handlers — the tenancy permission engine is untouched.
+
+## ADR-0008 — Competencies are a platform-global foundation with fixed rules
+
+**Status:** accepted (product owner, 2026-08-19)
+
+**Problem.** The module map planned a PER-CLUB competency tree with
+configurable validation stages and a per-skill minimum validator level
+(Fosse's model). Fosse's implementation showed the cost of that flexibility:
+a mutable stage ladder whose reordering retroactively changed what "validated"
+means, an editor nobody needed, a per-skill grade column with free-text
+values and a fail-open parser, and validations trapped in one club's silo.
+
+**Decision.**
+1. **The competency tree is platform-global** — "part of the project
+   foundations", like the FFESSM referential. Real global admins manage it;
+   clubs consume it. **Skill validations are user-global** and follow the
+   diver across clubs (same logic as the 2026-08-17 user-global profile
+   decision).
+2. **Validation stages are hardcoded** — no table, no editor: exactly
+   `vu → à perfectionner → validé`. For N1 and below, "Validé" in any
+   environment; above N1 the final validation necessarily happens **at sea**
+   (label "Validé en mer" — a rule and a label, not a fourth stage).
+3. **The required validator grade is a fixed function of the prepared
+   level** — no per-skill setting: E1 validates below N2, E2 below N3,
+   E3 below N4, E4 beyond. It is compared to the DERIVED certified teaching
+   grade (ADR-0007; the stagiaire MF1 status grants nothing), and the
+   validator must be an active member of a club where the diver is also an
+   active member.
+4. **Monotonic progression with an append-only history**: stages only move
+   forward (re-stamping the same stage is allowed); regression and deletion
+   are reserved to REAL (non-impersonating) global admins; every write emits
+   an immutable, denormalized event that survives tree restructuring.
+5. **Level documents are global too** (one PDF template per level, stamp
+   positions, flattened filled-PDF generation). Certification delivery stays
+   a manual `users`-module act (`provenance = validated`); the stamp image on
+   the PDF and any "eligible for delivery" indicator are later iterations.
+
+**Follow-up (same date): the club "Modules" tab is removed from the UI** —
+"core/foundation only for now". The tenancy enabled-modules registry
+(tables, `PUT /clubs/{slug}/modules`, tests) stays server-side untouched,
+like the Roles engine (ADR-0007 follow-up); no module consults it yet.
+
+**Consequences.** The competencies schema carries no `club_id` (clubs appear
+only as attribution and access context); Fosse's `validation_stages` table,
+stage editor and `min_validator_level` column are not ported; the importer
+maps Fosse stages onto the fixed ladder and drops the legacy flat
+`competencies` table. Changing the ladder or the grade rule is now a code
+change with tests, not a runtime edit.
+
+**Amendment (product owner, 2026-08-20, post-review).** A REAL global admin
+may validate **on behalf of a named instructor** (`validated_by_user_id` on
+the validation write, global-admin-only). The designated instructor must meet
+exactly the gates of a direct validator (active member of the club, derived
+grade ≥ the level's requirement, not the diver). The current state and the
+generated PDF carry the designated instructor; the history event and the
+audit log record the admin as the actor (with `on_behalf_of`).

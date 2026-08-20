@@ -1,11 +1,14 @@
-// Global error toasts — the safety net behind the frontend rule "every error
-// is visibly surfaced". Fed automatically by the react-query MutationCache
-// (see main.tsx); pages never need to remember to display mutation errors.
+// Global toasts — the safety net behind the frontend rule "every error is
+// visibly surfaced". Errors are fed automatically by the react-query
+// MutationCache (see main.tsx); pages never need to remember to display
+// mutation errors. Success toasts are opt-in (immediate-persistence UIs like
+// the stamp-position editor, which have no form to anchor feedback to).
 import { useSyncExternalStore } from "react";
 
 export interface Toast {
   id: number;
   message: string;
+  tone: "error" | "success";
 }
 
 let toasts: Toast[] = [];
@@ -17,20 +20,33 @@ function emit() {
   listeners.forEach((listener) => listener());
 }
 
-export function pushErrorToast(message: string) {
+function push(message: string, tone: Toast["tone"], durationMs: number) {
   const id = nextId++;
-  toasts.push({ id, message });
+  toasts.push({ id, message, tone });
   emit();
   setTimeout(() => {
     toasts = toasts.filter((toast) => toast.id !== id);
     emit();
-  }, 6000);
+  }, durationMs);
+}
+
+export function pushErrorToast(message: string) {
+  push(message, "error", 6000);
+}
+
+export function pushToast(message: string) {
+  push(message, "success", 2500);
 }
 
 function subscribe(listener: () => void) {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }
+
+const TONE_STYLES: Record<Toast["tone"], string> = {
+  error: "border-danger-600/30 bg-danger-50 text-danger-600",
+  success: "border-success-600/30 bg-success-50 text-success-600",
+};
 
 export function ToastViewport() {
   const current = useSyncExternalStore(subscribe, () => toasts);
@@ -44,7 +60,7 @@ export function ToastViewport() {
         <div
           key={toast.id}
           role="alert"
-          className="pointer-events-auto w-full max-w-sm rounded-(--radius-card) border border-danger-600/30 bg-danger-50 px-4 py-3 text-sm font-semibold text-danger-600 shadow-lg"
+          className={`pointer-events-auto w-full max-w-sm rounded-(--radius-card) border px-4 py-3 text-sm font-semibold shadow-lg ${TONE_STYLES[toast.tone]}`}
         >
           {toast.message}
         </div>

@@ -17,6 +17,20 @@ pub async fn find_by_id<C: ConnectionTrait>(
     Ok(Users::find_by_id(user_id).one(conn).await?)
 }
 
+/// Batched read for list/tree screens (one query per page of ids).
+pub async fn find_by_ids<C: ConnectionTrait>(
+    conn: &C,
+    user_ids: &[Uuid],
+) -> Result<Vec<users::Model>, AppError> {
+    if user_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    Ok(Users::find()
+        .filter(users::Column::Id.is_in(user_ids.to_vec()))
+        .all(conn)
+        .await?)
+}
+
 pub async fn list_global_admins<C: ConnectionTrait>(
     conn: &C,
 ) -> Result<Vec<users::Model>, AppError> {
@@ -96,7 +110,6 @@ pub async fn set_global_admin<C: ConnectionTrait>(
     Ok(active.update(conn).await?)
 }
 
-
 /// Self-service identity fix: first/last name only (bootstrap admins are
 /// created with a name derived from their email, and invitation typos
 /// happen — the person is the authority on their own name).
@@ -122,7 +135,6 @@ pub async fn update_names<C: ConnectionTrait>(
     active.updated_at = Set(now());
     Ok(active.update(conn).await?)
 }
-
 
 /// Platform-level enable/disable. `invited` is a lifecycle state owned by the
 /// invitation flow and cannot be set through here.

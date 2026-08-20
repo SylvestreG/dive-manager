@@ -66,6 +66,40 @@ const KNOWN_MESSAGES: Record<string, string> = {
   "first and last names cannot be empty":
     "Le prénom et le nom sont obligatoires.",
   "name too long": "Nom trop long.",
+  // competencies module
+  "validation stages only move forward":
+    "Une étape de validation ne peut pas revenir en arrière.",
+  "validation date cannot be in the future":
+    "La date de validation ne peut pas être dans le futur.",
+  "you cannot validate your own skills":
+    "Vous ne pouvez pas valider vos propres acquis.",
+  "validating requires being a member of this club":
+    "Valider nécessite d'être membre de ce club.",
+  "no certification in preparation": "Aucun niveau en préparation.",
+  "notes are too long": "Les notes sont trop longues.",
+  "name is required": "Le nom est obligatoire.",
+  "domain not found": "Domaine introuvable.",
+  "module not found": "Module introuvable.",
+  "skill not found": "Acquis introuvable.",
+  "validation not found": "Validation introuvable.",
+  "global administrator required": "Réservé aux administrateurs globaux.",
+  "no document for this level": "Aucun document pour ce niveau.",
+  "document exceeds 5 MiB": "Le document dépasse 5 Mo.",
+  "document must be a PDF file": "Le document doit être un fichier PDF.",
+  "document must be a valid PDF": "Ce PDF est invalide ou illisible.",
+  "PDF has no pages": "Ce PDF ne contient aucune page.",
+  "invalid base64 document": "Document invalide.",
+  "page is out of range": "La page indiquée n'existe pas dans le document.",
+  "invalid position geometry": "Position invalide.",
+  "skill does not belong to this level":
+    "Cet acquis n'appartient pas à ce niveau.",
+  "position not found": "Position introuvable.",
+  "this skill was just validated by someone else, reload and retry":
+    "Cet acquis vient d'être validé par quelqu'un d'autre — rechargez la page.",
+  "attributing a validation is reserved for global administrators":
+    "Attribuer une validation est réservé aux administrateurs globaux.",
+  "the designated validator is not an active member of this club":
+    "L'encadrant désigné n'est pas membre actif de ce club.",
 };
 
 export function translateApiError(error: unknown): string {
@@ -75,6 +109,21 @@ export function translateApiError(error: unknown): string {
     if (known) return known;
     if (error.message.startsWith("unknown certification: ")) {
       return `Certification inconnue : ${error.message.slice("unknown certification: ".length)}`;
+    }
+    const gradeGate = error.message.match(
+      /^validating this level requires a certified (E\d) instructor$/,
+    );
+    if (gradeGate) {
+      return `La validation de ce niveau est réservée aux encadrants ${gradeGate[1]} et plus.`;
+    }
+    const designatedGate = error.message.match(
+      /^the designated validator must be a certified (E\d) instructor$/,
+    );
+    if (designatedGate) {
+      return `L'encadrant désigné doit être un encadrant ${designatedGate[1]} ou plus.`;
+    }
+    if (error.message.startsWith("unknown stage: ")) {
+      return "Étape de validation inconnue.";
     }
     if (error.status >= 400 && error.status < 500 && error.message) {
       return error.message;

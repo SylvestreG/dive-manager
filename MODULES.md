@@ -26,6 +26,11 @@ Design constraint from the Fosse analysis: permissions are explicit grants
 only — an authenticated user with no membership has no access (Fosse is
 fail-open; see ADR-0003).
 
+The enabled-modules registry is server-side only for now: the club "Modules"
+tab was removed from the UI (product decision 2026-08-19, "core/foundation
+only" — same treatment as the Roles tab, ADR-0007 follow-up). No module
+consults the toggle yet.
+
 ## Business modules (club-toggleable where sensible)
 
 ### `users` — status: **implemented** (`backend/src/users/`; replaces the planned `members` module)
@@ -60,13 +65,22 @@ Depends on `registrations`.
 Fosse source: `rotations`, `palanquees`, `palanquee_members`,
 `fiche_securite.rs`.
 
-### `competencies` — status: planned
-Per-club competency tree (level → domain → module → skill), validation stages,
-skill validations **with history**, monotonic-progression rule, min-validator
-gate, level documents (PDF templates + stamp positions + filled generation),
-validation audit. Depends on `users`.
-Fosse source: `competency_*`, `validation_stages`, `skill_validations`,
-`level_documents`, `skill_document_positions`.
+### `competencies` — status: **implemented** (`backend/src/competencies/`)
+**PLATFORM-GLOBAL foundation, not club data** (product decision 2026-08-19,
+superseding the per-club plan): one competency tree (certification → domain →
+module → skill) managed by real global admins only; skill validations are
+USER-GLOBAL (follow the diver across clubs) with an **append-only event
+history**. Validation stages are **hardcoded** (vu → à perfectionner →
+validé; above N1 the final validation is at sea — label rule). Required
+validator grade is a fixed function of the level (E1 < N2, E2 < N3, E3 < N4,
+E4 beyond), compared to the DERIVED teaching grade (ADR-0007) of an active
+co-member. Monotonic progression (regression/delete = real global admin).
+Level documents: global PDF template per level + stamp positions + flattened
+filled-PDF generation. Depends on `users` + `ffessm` + `tenancy`.
+Design: `docs/design/competencies-module.md`.
+Fosse source: `competency_*`, `validation_stages` (dropped: fixed stages),
+`skill_validations`, `level_documents`, `skill_document_positions`; legacy
+flat `competencies` table dropped.
 
 ### `imports` — status: planned
 CSV import of members into a session, per-row error reporting, idempotency.
@@ -88,6 +102,9 @@ identity ← tenancy ← users ← activities ← registrations ← palanquees
               (ffessm) ↑ ↑                        ↑    ↑
                  competencies              imports    notifications
 ```
+
+`competencies` is a platform-global foundation (2026-08-19): its referential
+has no club owner; only the validation workflow runs in a club context.
 
 The `ffessm` crate (`backend/ffessm/`) is a pure domain library (no I/O, no
 database) consumed by `users` and later by `palanquees`/`competencies`.

@@ -1,15 +1,24 @@
+use axum::extract::DefaultBodyLimit;
 use axum::http::{HeaderValue, Method};
 use axum::routing::{delete, get, post, put};
 use axum::Router;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 
+use crate::competencies::handlers::{
+    documents as comp_documents, me as me_competencies, member as member_competencies,
+    referential as comp_referential,
+};
 use crate::identity::handlers::{auth, me as me_password};
 use crate::tenancy::handlers::{clubs, me, platform, public_invitations};
 use crate::users::handlers::{
     catalog as users_catalog, me as me_profile, member as member_profile,
 };
 use crate::AppState;
+
+/// Level-document templates arrive as base64 JSON (≤ 5 MiB raw): the default
+/// 2 MiB body limit is raised on that route only.
+const DOCUMENT_UPLOAD_BODY_LIMIT: usize = 8 * 1024 * 1024;
 
 pub fn build_router(state: AppState) -> Router {
     let api = Router::new()
@@ -142,6 +151,93 @@ pub fn build_router(state: AppState) -> Router {
             get(member_profile::get_member_stamp)
                 .put(member_profile::put_member_stamp)
                 .delete(member_profile::delete_member_stamp),
+        )
+        // Global competency referential (product decision 2026-08-19: the
+        // tree is platform-global). Reads for every authenticated user;
+        // writes for REAL global admins only (enforced in the handlers).
+        .route("/competencies/levels", get(comp_referential::list_levels))
+        .route("/competencies/tree", get(comp_referential::get_tree))
+        .route(
+            "/competencies/domains",
+            post(comp_referential::create_domain),
+        )
+        .route(
+            "/competencies/domains/{domain_id}",
+            put(comp_referential::update_domain).delete(comp_referential::delete_domain),
+        )
+        .route(
+            "/competencies/domains/{domain_id}/impact",
+            get(comp_referential::domain_impact),
+        )
+        .route(
+            "/competencies/modules",
+            post(comp_referential::create_module),
+        )
+        .route(
+            "/competencies/modules/{module_id}",
+            put(comp_referential::update_module).delete(comp_referential::delete_module),
+        )
+        .route(
+            "/competencies/modules/{module_id}/impact",
+            get(comp_referential::module_impact),
+        )
+        .route("/competencies/skills", post(comp_referential::create_skill))
+        .route(
+            "/competencies/skills/{skill_id}",
+            put(comp_referential::update_skill).delete(comp_referential::delete_skill),
+        )
+        .route(
+            "/competencies/skills/{skill_id}/impact",
+            get(comp_referential::skill_impact),
+        )
+        // Append-only validation history (real global admin).
+        .route(
+            "/competencies/validation-events",
+            get(comp_referential::list_events),
+        )
+        // Level-document templates + stamp positions (real global admin).
+        .route(
+            "/competencies/levels/{certification}/document",
+            get(comp_documents::download_document)
+                .put(comp_documents::upload_document)
+                .delete(comp_documents::delete_document)
+                .layer(DefaultBodyLimit::max(DOCUMENT_UPLOAD_BODY_LIMIT)),
+        )
+        .route(
+            "/competencies/levels/{certification}/positions",
+            get(comp_documents::list_positions).put(comp_documents::batch_positions),
+        )
+        .route(
+            "/competencies/levels/{certification}/positions/{skill_id}",
+            put(comp_documents::upsert_position).delete(comp_documents::delete_position),
+        )
+        // Self-service competency view + filled PDF (user-global data).
+        .route(
+            "/me/competencies",
+            get(me_competencies::get_my_competencies),
+        )
+        .route(
+            "/me/competencies/document",
+            get(me_competencies::get_my_document),
+        )
+        // Club-scoped competency routes: visibility via active membership,
+        // validator gate = derived teaching grade (never a permission).
+        .route(
+            "/clubs/{club_slug}/competencies/students",
+            get(member_competencies::list_students),
+        )
+        .route(
+            "/clubs/{club_slug}/members/{user_id}/competencies",
+            get(member_competencies::get_member_competencies),
+        )
+        .route(
+            "/clubs/{club_slug}/members/{user_id}/competencies/document",
+            get(member_competencies::get_member_document),
+        )
+        .route(
+            "/clubs/{club_slug}/members/{user_id}/skill-validations/{skill_id}",
+            put(member_competencies::put_skill_validation)
+                .delete(member_competencies::delete_skill_validation),
         );
 
     let cors = build_cors(&state);

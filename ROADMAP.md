@@ -34,14 +34,16 @@ first tenant-isolation test suite.
 
 Likely candidates, one at a time:
 
-1. People / members (club roster, diving levels, licenses)
-2. Activities: pool sessions & dive trips (sorties)
-3. Registrations / questionnaires
-4. Palanquées & rotations (incl. security sheet PDF)
-5. Competencies & skill validations
+1. ~~People / members~~ — **done** (`users` module, 2026-08-17)
+2. ~~Competencies & skill validations~~ — **done** (2026-08-20, moved up:
+   platform-global foundation, ADR-0008; part of the store-v1 member app)
+3. Activities: pool sessions & dive trips (sorties)
+4. Registrations / questionnaires
+5. Palanquées & rotations (incl. security sheet PDF)
 6. Notifications / emails
 7. Imports
-8. Club configuration & module toggles (may move earlier if needed)
+8. ~~Club configuration & module toggles~~ — module-toggle UI removed
+   (2026-08-19, "core/foundation only"); registry stays server-side
 
 ## Migration from Fosse
 

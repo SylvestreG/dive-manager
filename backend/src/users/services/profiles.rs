@@ -88,6 +88,28 @@ pub async fn get_many(
         .await?)
 }
 
+/// One page of the profiles preparing `certification` among `user_ids`
+/// (competencies students list) — one count + one fetch, ordered by user id.
+pub async fn page_preparing(
+    db: &DatabaseConnection,
+    user_ids: &[Uuid],
+    certification: &str,
+    page: u64,
+    per_page: u64,
+) -> Result<(Vec<user_profiles::Model>, u64), AppError> {
+    if user_ids.is_empty() {
+        return Ok((Vec::new(), 0));
+    }
+    let paginator = UserProfiles::find()
+        .filter(user_profiles::Column::UserId.is_in(user_ids.to_vec()))
+        .filter(user_profiles::Column::PreparingCertification.eq(certification))
+        .order_by_asc(user_profiles::Column::UserId)
+        .paginate(db, per_page);
+    let total = paginator.num_items().await? as u64;
+    let rows = paginator.fetch_page(page).await?;
+    Ok((rows, total))
+}
+
 fn validate(
     data: &ProfileData,
     held_certifications: &[Certification],
