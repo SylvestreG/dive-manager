@@ -12,5 +12,8 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
+    // Node ≥ 25's experimental localStorage global shadows jsdom's — the
+    // setup file restores a working Storage (see vitest.setup.ts).
+    setupFiles: ["./vitest.setup.ts"],
   },
 });
