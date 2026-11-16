@@ -33,7 +33,8 @@ const queryClient = new QueryClient({
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
+      {/* BASE_URL is "/v2/" in web production, "/" otherwise (vite.config.ts). */}
+      <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, "")}>
         <ToastViewport />
         <App />
       </BrowserRouter>

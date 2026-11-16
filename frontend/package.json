@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "build:web-prod": "tsc --noEmit && VITE_API_URL=/v2/api/v1 vite build --mode web-prod",
     "preview": "vite preview",
     "test": "vitest run",
     "ios": "VITE_API_URL=http://localhost:8081/api/v1 vite build && cap sync ios && cap open ios"
