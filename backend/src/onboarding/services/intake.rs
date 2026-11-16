@@ -154,13 +154,11 @@ pub async fn add_member<C: ConnectionTrait>(
     let managed = is_club_managed_newcomer(conn, &user).await?;
     if !names_match && !new.confirm_existing {
         // The person is NOT a member of the acting club: reveal nothing of
-        // their profile — only that the names differ (and which fields
-        // would differ, without values). Audited: it discloses the holder's
-        // name to the acting club.
-        let merge =
-            profiles::merge_intake(conn, user.id, new.profile, FillMode::ReportOnly).await?;
-        let mut diffs: Vec<FieldDiff> = merge.diffs.into_iter().map(FieldDiff::redacted).collect();
-        diffs.splice(0..0, name_diff);
+        // their profile — not even WHICH fields differ (that would let a
+        // caller confirm guesses, e.g. a birthdate, one request at a time).
+        // Only the name mismatch is returned. Audited: it discloses the
+        // holder's name to the acting club.
+        let diffs: Vec<FieldDiff> = name_diff.into_iter().collect();
         audit::record(
             conn,
             actor,
@@ -186,14 +184,11 @@ pub async fn add_member<C: ConnectionTrait>(
         FillMode::ReportOnly
     };
     let merge = profiles::merge_intake(conn, user.id, new.profile, mode).await?;
-    // Stored values of an account shared with other clubs (or that logged
-    // in) are its owner's data: field names only. The member sheet shows
-    // the profile through the regular member-view rules.
-    let mut diffs: Vec<FieldDiff> = if managed {
-        merge.diffs
-    } else {
-        merge.diffs.into_iter().map(FieldDiff::redacted).collect()
-    };
+    // Profile differences of an account shared with other clubs (or that
+    // logged in) are its owner's data — not reported at all (even field
+    // names would confirm guesses). The member sheet shows the profile
+    // through the regular member-view rules.
+    let mut diffs: Vec<FieldDiff> = if managed { merge.diffs } else { Vec::new() };
     diffs.splice(0..0, name_diff);
 
     audit::record(

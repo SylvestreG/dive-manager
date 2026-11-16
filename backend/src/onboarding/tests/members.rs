@@ -176,10 +176,10 @@ async fn name_mismatch_needs_confirmation_and_shared_accounts_are_never_written(
         .iter()
         .map(|d| d["field"].as_str().unwrap())
         .collect();
-    assert_eq!(fields, ["name", "birthdate"]);
     // Cross-club read guard: even a full club admin learns NOTHING of the
-    // profile of someone outside their club — only which fields differ.
-    assert!(body["diffs"][1]["stored"].is_null(), "{body}");
+    // profile of someone outside their club — not even which fields differ
+    // (no guess confirmation): only the name mismatch.
+    assert_eq!(fields, ["name"]);
     assert!(!body.to_string().contains("1985-03-12"));
     let probes = AuditLog::find()
         .filter(audit_log::Column::Action.eq("member.intake_check"))
@@ -327,13 +327,11 @@ async fn intake_only_staff_cannot_read_stored_profile_values() {
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    let diff = &body["diffs"][0];
-    assert_eq!(diff["field"], "birthdate");
-    assert!(
-        diff["stored"].is_null(),
-        "stored value hidden without members.view"
+    assert_eq!(
+        body["diffs"],
+        json!([]),
+        "shared account: no profile difference disclosed, not even field names"
     );
-    assert!(diff["incoming"].is_null());
 }
 
 #[tokio::test]
