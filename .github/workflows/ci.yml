@@ -83,7 +83,17 @@ jobs:
   backend-release:
     needs: reuse
     if: needs.reuse.outputs.run_id == ''
-    runs-on: ubuntu-latest
+    # Pinned: the binary must run on the production server (Debian 13,
+    # glibc 2.41). ubuntu-latest moving to 26.04 silently changed the C
+    # toolchain and shipped AVX2 code (ring) that crashed with SIGILL.
+    runs-on: ubuntu-24.04
+    env:
+      # Production CPU is a Xeon E5-1620 v2 (Ivy Bridge): x86-64-v2, no
+      # AVX2/BMI2/FMA. Pin C/C++ deps (ring, aws-lc-sys, …) to that level
+      # instead of trusting the runner compiler's default -march.
+      CFLAGS_x86_64_unknown_linux_gnu: -march=x86-64-v2
+      CXXFLAGS_x86_64_unknown_linux_gnu: -march=x86-64-v2
+      RUSTFLAGS: -C target-cpu=x86-64-v2
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
