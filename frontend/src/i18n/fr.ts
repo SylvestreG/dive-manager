@@ -24,7 +24,6 @@ export const t = {
     email: "Adresse email",
     firstName: "Prénom",
     lastName: "Nom",
-    password: "Mot de passe",
     active: "Actif",
     suspended: "Suspendu",
     disabled: "Désactivé",
@@ -39,13 +38,10 @@ export const t = {
   login: {
     title: "Connexion",
     intro: "Accédez à votre espace club.",
-    continue: "Continuer",
+    sendLink: "Recevoir un lien de connexion",
     magicLinkSent:
       "Si cette adresse est connue, un lien de connexion vient d'être envoyé par email. Il est valable 12 heures.",
-    passwordAction: "Se connecter",
-    forgotPassword: "Mot de passe oublié ? Recevoir un lien par email",
     changeEmail: "Changer d'adresse",
-    invalidCredentials: "Identifiants invalides.",
     tooManyAttempts: "Trop de tentatives, réessayez dans quelques minutes.",
   },
 
@@ -56,22 +52,11 @@ export const t = {
     backToLogin: "Retour à la connexion",
   },
 
-  invitation: {
-    title: "Invitation",
-    joinClub: (club: string) => `Vous êtes invité·e à rejoindre ${club}`,
-    joinPlatform: "Vous êtes invité·e à administrer Dive Manager",
-    role: "Rôle",
-    optionalPassword:
-      "Choisir un mot de passe (facultatif — le lien de connexion par email reste disponible)",
-    accept: "Accepter l'invitation",
-    invalid: "Cette invitation est invalide, expirée ou déjà utilisée.",
-  },
-
   home: {
     hello: (name: string) => `Bonjour ${name}`,
     myClubs: "Mes clubs",
     noClub:
-      "Vous n'êtes membre d'aucun club pour le moment. Un administrateur doit vous inviter.",
+      "Vous n'êtes membre d'aucun club pour le moment. Un administrateur de votre club doit vous ajouter.",
     open: "Ouvrir",
     admin: "Administrateur",
   },
@@ -81,7 +66,6 @@ export const t = {
     tabs: {
       members: "Membres",
       competencies: "Compétences",
-      invitations: "Invitations",
       audit: "Journal",
     },
     members: {
@@ -91,19 +75,23 @@ export const t = {
       suspend: "Suspendre",
       reactivate: "Réactiver",
       changeRole: "Changer le rôle",
-      addExisting: "Ajouter un membre existant",
-      addExistingHint:
-        "Le compte doit déjà exister sur Dive Manager. Pour une nouvelle personne, passez par une invitation.",
+      addTitle: "Ajouter un membre",
+      addHint:
+        "Si l'email correspond à un compte existant, ce compte rejoint le club. Sans email, la personne pourra être rattachée plus tard.",
+      emailOptional: "Adresse email (facultative)",
+      birthdateOptional: "Date de naissance (facultative)",
       add: "Ajouter",
-      added: "Membre ajouté.",
-    },
-    invitations: {
-      title: "Invitations en attente",
-      invite: "Inviter un membre",
-      resend: "Renvoyer",
-      revoke: "Révoquer",
-      expires: "Expire le",
-      sent: "Invitation envoyée.",
+      created: "Membre créé. Un email de bienvenue a été envoyé s'il a une adresse.",
+      addedExisting: "Compte existant ajouté au club.",
+      diffsTitle: "Valeurs différentes déjà enregistrées (non modifiées) :",
+      diffField: {
+        name: "Nom",
+        birthdate: "Date de naissance",
+        phone: "Téléphone",
+        licence_number: "N° de licence",
+      },
+      diffKept: "conservé",
+      diffEntered: "saisi :",
     },
     audit: {
       title: "Journal d'activité",
@@ -118,7 +106,8 @@ export const t = {
     createClub: "Créer un club",
     clubName: "Nom du club",
     clubSlug: "Identifiant (URL)",
-    inviteAdmin: "Inviter un administrateur",
+    addClubAdmin: "Ajouter un administrateur",
+    clubAdminAdded: "Administrateur ajouté, email de bienvenue envoyé.",
     suspend: "Suspendre",
     reactivate: "Réactiver",
     globalAdmins: "Administrateurs globaux",
@@ -133,15 +122,6 @@ export const t = {
 
   profile: {
     title: "Mon profil",
-    setPassword: "Définir un mot de passe",
-    changePassword: "Changer le mot de passe",
-    newPassword: "Nouveau mot de passe",
-    passwordHint:
-      "8 caractères minimum. Facultatif : le lien de connexion par email reste toujours disponible.",
-    changePasswordHint:
-      "8 caractères minimum. Le nouveau mot de passe remplace l'ancien.",
-    passwordSaved: "Mot de passe enregistré.",
-    passwordTooShort: "Le mot de passe doit contenir au moins 8 caractères.",
     editIdentity: "Modifier",
     logout: "Se déconnecter",
     logoutAll: "Se déconnecter de tous mes appareils",

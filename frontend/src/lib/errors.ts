@@ -7,17 +7,16 @@ import { ApiError } from "./api";
 /** Known backend messages → French. Fallback: show the backend message for
  * 4xx (it is written for humans), generic message otherwise. */
 const KNOWN_MESSAGES: Record<string, string> = {
-  "password must be between 8 and 128 characters":
-    "Le mot de passe doit contenir entre 8 et 128 caractères.",
-  "invalid credentials": "Identifiants invalides.",
   "invalid or expired session": "Session expirée, reconnectez-vous.",
   "invalid or expired login link": "Lien de connexion invalide ou expiré.",
   "resource already exists": "Cet élément existe déjà.",
   "this user is already a member of the club":
     "Cette personne est déjà membre du club.",
   "already a member of this club": "Cette personne est déjà membre du club.",
-  "no account with this email — send an invitation instead":
-    "Aucun compte avec cet email — envoyez une invitation.",
+  "this person is already a member of the club":
+    "Cette personne est déjà membre du club.",
+  "first and last names are required": "Le nom et le prénom sont obligatoires.",
+  "email is required": "L'adresse email est obligatoire.",
   "cannot remove the club's last administrator":
     "Impossible de retirer le dernier administrateur du club.",
   "cannot remove the last global administrator":
@@ -29,7 +28,6 @@ const KNOWN_MESSAGES: Record<string, string> = {
     "Impossible d'impersonnifier un administrateur global.",
   "action not allowed while impersonating":
     "Action impossible pendant une impersonation.",
-  "invitation not found or expired": "Invitation introuvable ou expirée.",
   "this account is disabled": "Ce compte est désactivé.",
   "user is not a member of this club":
     "Cette personne n'est pas membre du club.",

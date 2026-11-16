@@ -5,6 +5,6 @@ export const CLUB_PERMISSIONS = [
   "club.members.view",
   "club.members.manage",
   "club.roles.manage",
-  "club.invitations.manage",
+  "club.intake.manage",
   "club.impersonate",
 ] as const;

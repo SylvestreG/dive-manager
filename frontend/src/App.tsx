@@ -4,7 +4,6 @@ import { Navigate, Outlet, Route, Routes } from "react-router";
 import AppShell from "./components/AppShell";
 import { getToken } from "./lib/api";
 import { useUnauthorizedRedirect } from "./lib/session";
-import AcceptInvitation from "./pages/AcceptInvitation";
 import Home from "./pages/Home";
 import Login from "./pages/Login";
 import MagicLink from "./pages/MagicLink";
@@ -14,7 +13,6 @@ import Profile from "./pages/Profile";
 import Audit from "./pages/club/Audit";
 import ClubLayout, { ClubIndex } from "./pages/club/ClubLayout";
 import Competencies from "./pages/club/Competencies";
-import Invitations from "./pages/club/Invitations";
 import MemberCompetencies from "./pages/club/MemberCompetencies";
 import MemberProfile from "./pages/club/MemberProfile";
 import Members from "./pages/club/Members";
@@ -36,7 +34,6 @@ export default function App() {
       <Route path="/login" element={<Login />} />
       {/* These two paths are the links the backend emails out. */}
       <Route path="/auth/ml/:token" element={<MagicLink />} />
-      <Route path="/auth/invitations/:token" element={<AcceptInvitation />} />
 
       <Route element={<RequireAuth />}>
         <Route element={<AppShell />}>
@@ -62,7 +59,6 @@ export default function App() {
               element={<MemberCompetencies />}
             />
             <Route path="competencies" element={<Competencies />} />
-            <Route path="invitations" element={<Invitations />} />
             {/* No Modules tab (product decision 2026-08-19: core/foundation
                 only for now — the tenancy registry stays server-side). */}
             <Route path="audit" element={<Audit />} />

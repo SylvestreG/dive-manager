@@ -25,6 +25,7 @@ import {
   api,
   setToken,
   type MemberBadges,
+  type AddMemberResult,
   type MemberListItem,
   type RoleDto,
 } from "../../lib/api";
@@ -180,50 +181,85 @@ function MemberRow({
   );
 }
 
-/** Directly adds an existing platform user to the club (no email round-trip). */
+/**
+ * Adds a person to the club (ADR-0009: admin-curated accounts). An email
+ * that matches an existing account adds that account; otherwise a new one is
+ * created — with or without an email. Existing values are never overwritten;
+ * differences are listed for review.
+ */
 function AddMemberForm({ slug, roles }: { slug: string; roles: RoleDto[] }) {
   const queryClient = useQueryClient();
-  const [email, setEmail] = useState("");
-  const [roleId, setRoleId] = useState("");
+  const defaultRoleId = roles.find((r) => !r.is_admin)?.id ?? "";
+  const empty = { first_name: "", last_name: "", email: "", birthdate: "" };
+  const [form, setForm] = useState(empty);
+  const [roleId, setRoleId] = useState(defaultRoleId);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  const [result, setResult] = useState<AddMemberResult | null>(null);
+  const set = (key: keyof typeof empty) => (value: string) =>
+    setForm((f) => ({ ...f, [key]: value }));
   const add = useMutation({
     meta: { inlineError: true },
-    mutationFn: () => api.club(slug).addMember(email, roleId),
-    onSuccess: () => {
+    mutationFn: () =>
+      api.club(slug).addMember({
+        first_name: form.first_name,
+        last_name: form.last_name,
+        email: form.email.trim() || undefined,
+        birthdate: form.birthdate || undefined,
+        role_id: roleId || defaultRoleId,
+      }),
+    onSuccess: (added) => {
       setError(null);
-      setSuccess(t.club.members.added);
-      setEmail("");
+      setResult(added);
+      setForm(empty);
       queryClient.invalidateQueries({ queryKey: ["club", slug, "members"] });
-      queryClient.invalidateQueries({ queryKey: ["club", slug, "invitations"] });
     },
     onError: (e) => {
-      setSuccess(null);
+      setResult(null);
       setError(translateApiError(e));
     },
   });
+  const m = t.club.members;
   return (
     <Card className="mt-4">
-      <div className="text-sm font-semibold">{t.club.members.addExisting}</div>
-      <p className="mt-1 text-xs text-ink-soft">
-        {t.club.members.addExistingHint}
-      </p>
+      <div className="text-sm font-semibold">{m.addTitle}</div>
+      <p className="mt-1 text-xs text-ink-soft">{m.addHint}</p>
       <div className="mt-2 flex flex-col gap-3">
-        <Field label={t.common.email}>
+        <Field label={t.common.lastName}>
+          <TextInput
+            autoComplete="off"
+            value={form.last_name}
+            onChange={(e) => set("last_name")(e.target.value)}
+          />
+        </Field>
+        <Field label={t.common.firstName}>
+          <TextInput
+            autoComplete="off"
+            value={form.first_name}
+            onChange={(e) => set("first_name")(e.target.value)}
+          />
+        </Field>
+        <Field label={m.emailOptional}>
           <TextInput
             type="email"
             inputMode="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            autoComplete="off"
+            value={form.email}
+            onChange={(e) => set("email")(e.target.value)}
+          />
+        </Field>
+        <Field label={m.birthdateOptional}>
+          <TextInput
+            type="date"
+            value={form.birthdate}
+            onChange={(e) => set("birthdate")(e.target.value)}
           />
         </Field>
         <Field label={t.common.role}>
           <Select
             className="w-full"
-            value={roleId}
+            value={roleId || defaultRoleId}
             onChange={(e) => setRoleId(e.target.value)}
           >
-            <option value="">{t.common.selectRole}</option>
             {roles.map((role) => (
               <option key={role.id} value={role.id}>
                 {role.name}
@@ -232,12 +268,36 @@ function AddMemberForm({ slug, roles }: { slug: string; roles: RoleDto[] }) {
           </Select>
         </Field>
         <Button
-          disabled={!email || !roleId || add.isPending}
+          disabled={
+            !form.first_name.trim() ||
+            !form.last_name.trim() ||
+            !(roleId || defaultRoleId) ||
+            add.isPending
+          }
           onClick={() => add.mutate()}
         >
-          {t.club.members.add}
+          {m.add}
         </Button>
-        <FormFeedback error={error} success={success} />
+        <FormFeedback
+          error={error}
+          success={
+            result &&
+            (result.outcome === "created" ? m.created : m.addedExisting)
+          }
+        />
+        {result && result.diffs.length > 0 && (
+          <div className="rounded-lg bg-warning-50 p-3 text-xs text-ink">
+            <div className="font-semibold">{m.diffsTitle}</div>
+            <ul className="mt-1 list-disc pl-4">
+              {result.diffs.map((d) => (
+                <li key={d.field}>
+                  {m.diffField[d.field]} : {d.stored} → {m.diffKept}{" "}
+                  ({m.diffEntered} {d.incoming})
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     </Card>
   );
@@ -246,8 +306,8 @@ function AddMemberForm({ slug, roles }: { slug: string; roles: RoleDto[] }) {
 export default function Members() {
   const club = useClub();
   const canManageRoles = can(club, "club.roles.manage");
-  // Member intake (invitation OR direct add) = club.invitations.manage.
-  const canIntake = can(club, "club.invitations.manage");
+  // Member intake (manual add; later CSV import + access requests) = club.intake.manage.
+  const canIntake = can(club, "club.intake.manage");
   const [page, setPage] = useState(1);
 
   const members = useQuery({
