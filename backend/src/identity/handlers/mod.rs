@@ -8,7 +8,7 @@ use crate::identity::entities::users;
 #[derive(Debug, Serialize)]
 pub struct UserDto {
     pub id: uuid::Uuid,
-    pub email: String,
+    pub email: Option<String>,
     pub first_name: String,
     pub last_name: String,
     pub is_global_admin: bool,

@@ -3,7 +3,6 @@
 
 use axum::extract::{Path, Query, State};
 use axum::Json;
-use sea_orm::sea_query::Expr;
 use sea_orm::*;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -12,15 +11,14 @@ use uuid::Uuid;
 use crate::errors::AppError;
 use crate::identity::entities::{audit_log, prelude::AuditLog, prelude::Users, users};
 use crate::identity::handlers::{SessionResponse, UserDto};
-use crate::identity::services::users as user_service;
 use crate::identity::services::{audit, sessions};
 use crate::pagination::PageParams;
 use crate::tenancy::context::{real_user_club_permissions, Tenant};
 use crate::tenancy::entities::{
-    club_modules, club_role_permissions, club_roles, clubs, invitations, memberships, prelude::*,
+    club_modules, club_role_permissions, club_roles, clubs, memberships, prelude::*,
 };
 use crate::tenancy::permissions::Permission;
-use crate::tenancy::services::{invitations as invitation_service, seed};
+use crate::tenancy::services::seed;
 use crate::{now, AppState};
 
 // ---------- club settings ----------
@@ -176,12 +174,12 @@ pub async fn list_roles(
     State(state): State<AppState>,
     tenant: Tenant,
 ) -> Result<Json<Vec<RoleDto>>, AppError> {
-    // Reading roles serves the member/invitation forms too; editing them
+    // Reading roles serves the member intake forms too; editing them
     // (set_role_permissions) stays locked behind club.roles.manage.
     tenant.require_any(&[
         Permission::ClubRolesManage,
         Permission::ClubMembersView,
-        Permission::ClubInvitationsManage,
+        Permission::ClubIntakeManage,
     ])?;
     let roles = ClubRoles::find()
         .filter(club_roles::Column::ClubId.eq(tenant.club.id))
@@ -291,101 +289,6 @@ pub struct MembershipDto {
     pub role_name: String,
     pub is_admin: bool,
     pub status: String,
-}
-
-#[derive(Deserialize)]
-pub struct AddMembershipRequest {
-    pub email: String,
-    pub role_id: Uuid,
-}
-
-/// Directly adds an EXISTING platform user to the club (product decision:
-/// no email round-trip needed when the account already exists). Unknown
-/// emails must go through an invitation — that flow creates the account.
-/// Member intake (invitation or direct add) is governed by the SAME
-/// permission, `club.invitations.manage` — one control point, two mechanisms.
-pub async fn add_membership(
-    State(state): State<AppState>,
-    tenant: Tenant,
-    Json(body): Json<AddMembershipRequest>,
-) -> Result<Json<MembershipDto>, AppError> {
-    tenant.require(Permission::ClubInvitationsManage)?;
-    let role = ClubRoles::find_by_id(body.role_id)
-        .filter(club_roles::Column::ClubId.eq(tenant.club.id))
-        .one(&state.db)
-        .await?
-        .ok_or_else(|| AppError::NotFound("role not found".to_string()))?;
-    if role.is_admin {
-        // Granting admin is authorization-sensitive (same rule as invitations).
-        tenant.require_real(Permission::ClubRolesManage)?;
-    }
-
-    let user = user_service::find_by_email(&state.db, &body.email)
-        .await?
-        .ok_or_else(|| {
-            AppError::NotFound(
-                "no account with this email — send an invitation instead".to_string(),
-            )
-        })?;
-    if user.status == crate::identity::entities::users::STATUS_DISABLED {
-        return Err(AppError::Conflict("this account is disabled".to_string()));
-    }
-    let already_member = Memberships::find()
-        .filter(memberships::Column::ClubId.eq(tenant.club.id))
-        .filter(memberships::Column::UserId.eq(user.id))
-        .one(&state.db)
-        .await?
-        .is_some();
-    if already_member {
-        return Err(AppError::Conflict(
-            "this user is already a member of the club".to_string(),
-        ));
-    }
-
-    let txn = state.db.begin().await?;
-    let created = now();
-    // A direct add supersedes any pending invitation for the same person —
-    // otherwise a stale "pending" entry would linger and its acceptance
-    // would 409 forever.
-    Invitations::update_many()
-        .col_expr(invitations::Column::RevokedAt, Expr::value(Some(created)))
-        .filter(invitations::Column::ClubId.eq(tenant.club.id))
-        .filter(invitations::Column::Email.eq(user.email.clone()))
-        .filter(invitations::Column::ConsumedAt.is_null())
-        .filter(invitations::Column::RevokedAt.is_null())
-        .exec(&txn)
-        .await?;
-    let membership = memberships::ActiveModel {
-        id: Set(Uuid::now_v7()),
-        club_id: Set(tenant.club.id),
-        user_id: Set(user.id),
-        role_id: Set(role.id),
-        status: Set(memberships::STATUS_ACTIVE.to_string()),
-        created_at: Set(created),
-        updated_at: Set(created),
-    }
-    .insert(&txn)
-    .await?;
-    audit::record(
-        &txn,
-        tenant.actor(),
-        Some(tenant.club.id),
-        "membership.created",
-        "membership",
-        Some(membership.id),
-        json!({ "user_id": user.id, "email": user.email, "role_id": role.id }),
-    )
-    .await?;
-    txn.commit().await?;
-
-    Ok(Json(MembershipDto {
-        id: membership.id,
-        user: UserDto::from(&user),
-        role_id: role.id,
-        role_name: role.name.clone(),
-        is_admin: role.is_admin,
-        status: membership.status,
-    }))
 }
 
 #[derive(Deserialize)]
@@ -499,159 +402,6 @@ pub async fn update_membership(
 }
 
 // ---------- invitations ----------
-
-#[derive(Serialize)]
-pub struct InvitationDto {
-    pub id: Uuid,
-    pub email: String,
-    pub first_name: String,
-    pub last_name: String,
-    pub role_id: Option<Uuid>,
-    pub expires_at: sea_orm::prelude::DateTimeWithTimeZone,
-    pub created_at: sea_orm::prelude::DateTimeWithTimeZone,
-}
-
-impl From<&invitations::Model> for InvitationDto {
-    fn from(inv: &invitations::Model) -> Self {
-        InvitationDto {
-            id: inv.id,
-            email: inv.email.clone(),
-            first_name: inv.first_name.clone(),
-            last_name: inv.last_name.clone(),
-            role_id: inv.role_id,
-            expires_at: inv.expires_at,
-            created_at: inv.created_at,
-        }
-    }
-}
-
-pub async fn list_invitations(
-    State(state): State<AppState>,
-    tenant: Tenant,
-    Query(page): Query<PageParams>,
-) -> Result<Json<crate::pagination::Page<InvitationDto>>, AppError> {
-    tenant.require(Permission::ClubInvitationsManage)?;
-    let (page, per_page) = page.resolve();
-    let paginator = Invitations::find()
-        .filter(invitations::Column::ClubId.eq(tenant.club.id))
-        .filter(invitations::Column::ConsumedAt.is_null())
-        .filter(invitations::Column::RevokedAt.is_null())
-        .filter(invitations::Column::ExpiresAt.gt(now()))
-        .order_by_desc(invitations::Column::CreatedAt)
-        .paginate(&state.db, per_page);
-    let total = paginator.num_items().await? as u64;
-    let rows = paginator.fetch_page(page).await?;
-    Ok(Json(crate::pagination::Page::new(
-        rows.iter().map(InvitationDto::from).collect(),
-        total,
-        page,
-        per_page,
-    )))
-}
-
-#[derive(Deserialize)]
-pub struct CreateClubInvitationRequest {
-    pub email: String,
-    pub first_name: String,
-    pub last_name: String,
-    pub role_id: Uuid,
-}
-
-pub async fn create_invitation(
-    State(state): State<AppState>,
-    tenant: Tenant,
-    Json(body): Json<CreateClubInvitationRequest>,
-) -> Result<Json<InvitationDto>, AppError> {
-    tenant.require(Permission::ClubInvitationsManage)?;
-    let role = ClubRoles::find_by_id(body.role_id)
-        .filter(club_roles::Column::ClubId.eq(tenant.club.id))
-        .one(&state.db)
-        .await?
-        .ok_or_else(|| AppError::NotFound("role not found".to_string()))?;
-    if role.is_admin {
-        // Granting admin is authorization-sensitive: real principal +
-        // role-management permission required.
-        tenant.require_real(Permission::ClubRolesManage)?;
-    }
-    let inviter = &tenant.auth.effective_user;
-    let inviter_name = format!("{} {}", inviter.first_name, inviter.last_name);
-    let invitation = invitation_service::create_invitation(
-        &state,
-        tenant.actor(),
-        &inviter_name,
-        invitation_service::NewInvitation {
-            email: &body.email,
-            first_name: &body.first_name,
-            last_name: &body.last_name,
-            club: Some(&tenant.club),
-            role: Some(&role),
-        },
-    )
-    .await?;
-    Ok(Json(InvitationDto::from(&invitation)))
-}
-
-pub async fn resend_invitation(
-    State(state): State<AppState>,
-    tenant: Tenant,
-    Path((_slug, invitation_id)): Path<(String, Uuid)>,
-) -> Result<Json<InvitationDto>, AppError> {
-    tenant.require(Permission::ClubInvitationsManage)?;
-    let invitation = Invitations::find_by_id(invitation_id)
-        .filter(invitations::Column::ClubId.eq(tenant.club.id))
-        .filter(invitations::Column::ConsumedAt.is_null())
-        .filter(invitations::Column::RevokedAt.is_null())
-        .one(&state.db)
-        .await?
-        .ok_or_else(|| AppError::NotFound("invitation not found".to_string()))?;
-    let Some(role_id) = invitation.role_id else {
-        tracing::error!(invitation_id = %invitation.id, "club invitation without role");
-        return Err(AppError::Internal);
-    };
-    let role = ClubRoles::find_by_id(role_id)
-        .filter(club_roles::Column::ClubId.eq(tenant.club.id))
-        .one(&state.db)
-        .await?
-        .ok_or_else(|| AppError::NotFound("role not found".to_string()))?;
-    if role.is_admin {
-        tenant.require_real(Permission::ClubRolesManage)?;
-    }
-    let inviter = &tenant.auth.effective_user;
-    let inviter_name = format!("{} {}", inviter.first_name, inviter.last_name);
-    // create_invitation revokes the previous pending invitation for the same
-    // email + club, so "resend" is "recreate with a fresh token and expiry".
-    let new_invitation = invitation_service::create_invitation(
-        &state,
-        tenant.actor(),
-        &inviter_name,
-        invitation_service::NewInvitation {
-            email: &invitation.email,
-            first_name: &invitation.first_name,
-            last_name: &invitation.last_name,
-            club: Some(&tenant.club),
-            role: Some(&role),
-        },
-    )
-    .await?;
-    Ok(Json(InvitationDto::from(&new_invitation)))
-}
-
-pub async fn revoke_invitation(
-    State(state): State<AppState>,
-    tenant: Tenant,
-    Path((_slug, invitation_id)): Path<(String, Uuid)>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    tenant.require(Permission::ClubInvitationsManage)?;
-    let invitation = Invitations::find_by_id(invitation_id)
-        .filter(invitations::Column::ClubId.eq(tenant.club.id))
-        .one(&state.db)
-        .await?
-        .ok_or_else(|| AppError::NotFound("invitation not found".to_string()))?;
-    invitation_service::revoke_invitation(&state.db, tenant.actor(), &invitation).await?;
-    Ok(Json(json!({ "message": "invitation revoked" })))
-}
-
-// ---------- impersonation ----------
 
 #[derive(Deserialize)]
 pub struct ImpersonateRequest {

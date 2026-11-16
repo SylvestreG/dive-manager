@@ -8,8 +8,7 @@
     "bootstrap_admin_emails": ["ccna.syl@gmail.com"],
     "session_idle_days": 180,
     "session_max_days": 365,
-    "magic_link_hours": 12,
-    "invitation_days": 7
+    "magic_link_hours": 12
   },
   "smtp": null,
   "base_url": "http://localhost:8081",

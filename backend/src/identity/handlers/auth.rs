@@ -27,22 +27,6 @@ pub async fn request_magic_link(
 }
 
 #[derive(Deserialize)]
-pub struct LoginMethodsRequest {
-    pub email: String,
-}
-
-/// Email-first login: tells the client whether this account uses a password.
-/// `password: false` covers unknown, disabled and password-less accounts alike.
-pub async fn login_methods(
-    State(state): State<AppState>,
-    ClientIp(ip): ClientIp,
-    Json(body): Json<LoginMethodsRequest>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    let password = login::has_password_login(&state, &body.email, &ip).await?;
-    Ok(Json(json!({ "password": password })))
-}
-
-#[derive(Deserialize)]
 pub struct ConsumeMagicLinkRequest {
     pub token: String,
 }
@@ -52,24 +36,6 @@ pub async fn consume_magic_link(
     Json(body): Json<ConsumeMagicLinkRequest>,
 ) -> Result<Json<SessionResponse>, AppError> {
     let (token, user) = login::consume_magic_link(&state, &body.token).await?;
-    Ok(Json(SessionResponse {
-        token,
-        user: UserDto::from(&user),
-    }))
-}
-
-#[derive(Deserialize)]
-pub struct PasswordLoginRequest {
-    pub email: String,
-    pub password: String,
-}
-
-pub async fn login_password(
-    State(state): State<AppState>,
-    ClientIp(ip): ClientIp,
-    Json(body): Json<PasswordLoginRequest>,
-) -> Result<Json<SessionResponse>, AppError> {
-    let (token, user) = login::login_password(&state, &body.email, &body.password, &ip).await?;
     Ok(Json(SessionResponse {
         token,
         user: UserDto::from(&user),

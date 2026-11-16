@@ -25,6 +25,29 @@ use crate::tenancy::entities::{club_role_permissions, club_roles, clubs, members
 use crate::tenancy::services::seed;
 use crate::{app, normalize_email, now, AppState};
 
+/// Creates a throwaway, NOT migrated database; returns it with its URL.
+/// Migration tests use it to stop at an earlier schema version.
+pub async fn empty_database() -> (DatabaseConnection, String) {
+    let base_url = std::env::var("TEST_DATABASE_URL").expect(
+        "TEST_DATABASE_URL must point to a PostgreSQL server \
+         (e.g. postgres://postgres@localhost:5499/postgres)",
+    );
+    let db_name = format!("dm_test_{}", Uuid::now_v7().simple());
+    let admin_db = Database::connect(&base_url)
+        .await
+        .expect("connect admin db");
+    // Test infrastructure only: creating throwaway databases is DDL that
+    // no application code path uses (ADR-0006 targets runtime queries).
+    admin_db
+        .execute_unprepared(&format!("CREATE DATABASE {db_name}"))
+        .await
+        .expect("create test database");
+    let (server, _) = base_url.rsplit_once('/').expect("url with database path");
+    let db_url = format!("{server}/{db_name}");
+    let db = Database::connect(&db_url).await.expect("connect test db");
+    (db, db_url)
+}
+
 pub struct TestApp {
     pub router: Router,
     pub state: AppState,
@@ -32,24 +55,7 @@ pub struct TestApp {
 
 impl TestApp {
     pub async fn new() -> TestApp {
-        let base_url = std::env::var("TEST_DATABASE_URL").expect(
-            "TEST_DATABASE_URL must point to a PostgreSQL server \
-             (e.g. postgres://postgres@localhost:5499/postgres)",
-        );
-        let db_name = format!("dm_test_{}", Uuid::now_v7().simple());
-        let admin_db = Database::connect(&base_url)
-            .await
-            .expect("connect admin db");
-        // Test infrastructure only: creating throwaway databases is DDL that
-        // no application code path uses (ADR-0006 targets runtime queries).
-        admin_db
-            .execute_unprepared(&format!("CREATE DATABASE {db_name}"))
-            .await
-            .expect("create test database");
-
-        let (server, _) = base_url.rsplit_once('/').expect("url with database path");
-        let db_url = format!("{server}/{db_name}");
-        let db = Database::connect(&db_url).await.expect("connect test db");
+        let (db, db_url) = empty_database().await;
         Migrator::up(&db, None).await.expect("migrations");
 
         let mut config = Config::default();
@@ -106,19 +112,24 @@ impl TestApp {
         (status, value)
     }
 
-    pub async fn create_user(&self, email: &str, active: bool, global_admin: bool) -> users::Model {
+    /// `activated`: whether the account has already logged in once
+    /// (`activated_at` set) — ADR-0009 replaced the `invited` status.
+    pub async fn create_user(
+        &self,
+        email: &str,
+        activated: bool,
+        global_admin: bool,
+    ) -> users::Model {
         let created = now();
         users::ActiveModel {
             id: Set(Uuid::now_v7()),
-            email: Set(normalize_email(email)),
+            email: Set(Some(normalize_email(email))),
             first_name: Set("Test".to_string()),
             last_name: Set("User".to_string()),
-            status: Set(if active {
-                users::STATUS_ACTIVE.to_string()
-            } else {
-                users::STATUS_INVITED.to_string()
-            }),
+            status: Set(users::STATUS_ACTIVE.to_string()),
             is_global_admin: Set(global_admin),
+            activated_at: Set(activated.then_some(created)),
+            email_verified_at: Set(activated.then_some(created)),
             created_at: Set(created),
             updated_at: Set(created),
         }

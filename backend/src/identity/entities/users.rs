@@ -5,29 +5,25 @@ use sea_orm::entity::prelude::*;
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
-    pub email: String,
+    /// Optional (members imported without an address); unique when present,
+    /// lowercase. Magic links are sent here.
+    pub email: Option<String>,
     pub first_name: String,
     pub last_name: String,
     pub status: String,
     pub is_global_admin: bool,
+    /// First successful login, any method. NULL = never logged in.
+    pub activated_at: Option<DateTimeWithTimeZone>,
+    /// Set when ownership of `email` was proven (magic link clicked).
+    pub email_verified_at: Option<DateTimeWithTimeZone>,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum Relation {
-    #[sea_orm(has_one = "super::user_passwords::Entity")]
-    Password,
-}
-
-impl Related<super::user_passwords::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::Password.def()
-    }
-}
+pub enum Relation {}
 
 impl ActiveModelBehavior for ActiveModel {}
 
-pub const STATUS_INVITED: &str = "invited";
 pub const STATUS_ACTIVE: &str = "active";
 pub const STATUS_DISABLED: &str = "disabled";

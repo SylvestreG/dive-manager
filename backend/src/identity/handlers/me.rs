@@ -7,30 +7,8 @@ use crate::errors::AppError;
 use crate::identity::extractors::CurrentUser;
 use crate::identity::handlers::UserDto;
 use crate::identity::services::audit::{self, Actor};
-use crate::identity::services::login;
 use crate::identity::services::users as user_service;
 use crate::AppState;
-
-#[derive(Deserialize)]
-pub struct SetPasswordRequest {
-    pub password: String,
-}
-
-/// Sets the caller's own (real user's) optional password. Refused while
-/// impersonating — it would silently change the target's credential.
-pub async fn set_my_password(
-    State(state): State<AppState>,
-    CurrentUser(auth): CurrentUser,
-    Json(body): Json<SetPasswordRequest>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    if auth.is_impersonating() {
-        return Err(AppError::Forbidden(
-            "action not allowed while impersonating".to_string(),
-        ));
-    }
-    login::set_password(&state.db, auth.real_user.id, &body.password).await?;
-    Ok(Json(json!({ "message": "password updated" })))
-}
 
 #[derive(Deserialize)]
 pub struct UpdateIdentityRequest {
@@ -39,7 +17,7 @@ pub struct UpdateIdentityRequest {
 }
 
 /// Sets the caller's own first/last name (bootstrap accounts start with a
-/// name derived from their email; invitation typos happen). Refused while
+/// name derived from their email; admin typos happen). Refused while
 /// impersonating — user-global identity data.
 pub async fn set_my_identity(
     State(state): State<AppState>,

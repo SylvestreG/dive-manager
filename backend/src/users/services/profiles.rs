@@ -252,3 +252,88 @@ pub async fn update<C: ConnectionTrait>(
     let existing = get(conn, user_id).await?;
     apply(conn, user_id, existing, data, held_certifications, statuses).await
 }
+
+/// Values an admin intake (manual add, CSV import) brings for a person.
+#[derive(Debug, Clone, Default)]
+pub struct IntakeFields {
+    pub birthdate: Option<NaiveDate>,
+    pub phone: Option<String>,
+    pub licence_number: Option<String>,
+}
+
+/// A field the intake brought that differs from the stored value — reported,
+/// never applied (auth-onboarding design R22: imports never overwrite).
+#[derive(Debug, Clone, serde::Serialize, PartialEq)]
+pub struct FieldDiff {
+    pub field: &'static str,
+    pub stored: String,
+    pub incoming: String,
+}
+
+/// Fills EMPTY profile fields from an admin intake and reports the fields
+/// that differ. Existing values are never overwritten: the profile is
+/// user-global, possibly shared with other clubs. Goes through the regular
+/// profile validation (`apply`). Returns the diffs (empty = nothing to
+/// review); no write when there is nothing to fill.
+pub async fn fill_gaps<C: ConnectionTrait>(
+    conn: &C,
+    user_id: Uuid,
+    fields: IntakeFields,
+) -> Result<Vec<FieldDiff>, AppError> {
+    fn clean(value: Option<String>) -> Option<String> {
+        value
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+    }
+    let phone = clean(fields.phone);
+    let licence = clean(fields.licence_number);
+    for value in [&phone, &licence].into_iter().flatten() {
+        if value.len() > 30 {
+            return Err(AppError::Validation("value too long".to_string()));
+        }
+    }
+
+    let existing = get(conn, user_id).await?;
+    let mut data = ProfileData::from_existing(existing.as_ref());
+    let mut diffs = Vec::new();
+    let mut changed = false;
+
+    match (data.birthdate, fields.birthdate) {
+        (None, Some(new)) => {
+            data.birthdate = Some(new);
+            changed = true;
+        }
+        (Some(old), Some(new)) if old != new => diffs.push(FieldDiff {
+            field: "birthdate",
+            stored: old.to_string(),
+            incoming: new.to_string(),
+        }),
+        _ => {}
+    }
+    for (field, slot, incoming) in [
+        ("phone", &mut data.phone, phone),
+        ("licence_number", &mut data.licence_number, licence),
+    ] {
+        match (slot.as_ref(), incoming) {
+            (None, Some(new)) => {
+                *slot = Some(new);
+                changed = true;
+            }
+            (Some(old), Some(new)) if *old != new => diffs.push(FieldDiff {
+                field,
+                stored: old.clone(),
+                incoming: new,
+            }),
+            _ => {}
+        }
+    }
+
+    if changed {
+        let certifications = derived::parse_certifications(
+            &crate::users::services::certifications::list(conn, user_id).await?,
+        );
+        let statuses = crate::users::services::training_statuses::list(conn, user_id).await?;
+        apply(conn, user_id, existing, data, &certifications, &statuses).await?;
+    }
+    Ok(diffs)
+}

@@ -24,7 +24,11 @@ async fn member_without_permission_is_denied_everywhere() {
         (Method::GET, "/api/v1/clubs/usi/roles", None),
         (Method::GET, "/api/v1/clubs/usi/members", None),
         (Method::GET, "/api/v1/clubs/usi/modules", None),
-        (Method::GET, "/api/v1/clubs/usi/invitations", None),
+        (
+            Method::POST,
+            "/api/v1/clubs/usi/members",
+            Some(json!({ "first_name": "X", "last_name": "Y", "role_id": Uuid::now_v7() })),
+        ),
         (Method::GET, "/api/v1/clubs/usi/audit-log", None),
         (
             Method::PUT,
@@ -147,9 +151,9 @@ async fn existing_users_can_be_added_directly_including_the_global_admin() {
     let (status, membership) = app
         .request(
             Method::POST,
-            "/api/v1/clubs/usi/memberships",
+            "/api/v1/clubs/usi/members",
             Some(&token),
-            Some(json!({ "email": "root@example.com", "role_id": admin_role_id })),
+            Some(json!({ "first_name": "Test", "last_name": "User", "email": "root@example.com", "role_id": admin_role_id })),
         )
         .await;
     assert_eq!(status, StatusCode::OK, "{membership}");
@@ -159,25 +163,26 @@ async fn existing_users_can_be_added_directly_including_the_global_admin() {
         .await;
     assert_eq!(me["memberships"][0]["club_slug"], "usi");
 
-    // Adding twice conflicts; unknown emails must use an invitation.
+    // Adding twice conflicts; an unknown email creates the account
+    // (ADR-0009: admin-curated accounts, no invitation).
     let (status, _) = app
         .request(
             Method::POST,
-            "/api/v1/clubs/usi/memberships",
+            "/api/v1/clubs/usi/members",
             Some(&token),
-            Some(json!({ "email": "root@example.com", "role_id": admin_role_id })),
+            Some(json!({ "first_name": "Test", "last_name": "User", "email": "root@example.com", "role_id": admin_role_id })),
         )
         .await;
     assert_eq!(status, StatusCode::CONFLICT);
     let (status, _) = app
         .request(
             Method::POST,
-            "/api/v1/clubs/usi/memberships",
+            "/api/v1/clubs/usi/members",
             Some(&token),
-            Some(json!({ "email": "nobody@example.com", "role_id": admin_role_id })),
+            Some(json!({ "first_name": "Test", "last_name": "User", "email": "nobody@example.com", "role_id": admin_role_id })),
         )
         .await;
-    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(status, StatusCode::OK);
 
     // Granting admin while impersonating is refused (require_real).
     let member = app.create_user("member@example.com", true, false).await;
@@ -193,9 +198,9 @@ async fn existing_users_can_be_added_directly_including_the_global_admin() {
     let (status, added) = app
         .request(
             Method::POST,
-            "/api/v1/clubs/usi/memberships",
+            "/api/v1/clubs/usi/members",
             Some(&token),
-            Some(json!({ "email": "member@example.com", "role_id": member_role_id })),
+            Some(json!({ "first_name": "Test", "last_name": "User", "email": "member@example.com", "role_id": member_role_id })),
         )
         .await;
     assert_eq!(status, StatusCode::OK, "{added}");
@@ -211,9 +216,9 @@ async fn existing_users_can_be_added_directly_including_the_global_admin() {
     let (status, _) = app
         .request(
             Method::POST,
-            "/api/v1/clubs/usi/memberships",
+            "/api/v1/clubs/usi/members",
             Some(impersonation),
-            Some(json!({ "email": "nobody2@example.com", "role_id": admin_role_id })),
+            Some(json!({ "first_name": "Test", "last_name": "User", "email": "nobody2@example.com", "role_id": admin_role_id })),
         )
         .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
@@ -232,13 +237,13 @@ async fn member_intake_permission_allows_direct_add_but_not_admin_grant() {
     let staff_token = app.session_for(staff.id).await;
     app.create_user("candidate@example.com", true, false).await;
 
-    // Without club.invitations.manage, direct add is denied.
+    // Without club.intake.manage, direct add is denied.
     let (status, _) = app
         .request(
             Method::POST,
-            "/api/v1/clubs/usi/memberships",
+            "/api/v1/clubs/usi/members",
             Some(&staff_token),
-            Some(json!({ "email": "candidate@example.com", "role_id": member_role.id })),
+            Some(json!({ "first_name": "Test", "last_name": "User", "email": "candidate@example.com", "role_id": member_role.id })),
         )
         .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
@@ -250,16 +255,16 @@ async fn member_intake_permission_allows_direct_add_but_not_admin_grant() {
             Method::PUT,
             &format!("/api/v1/clubs/usi/roles/{}/permissions", staff_role.id),
             Some(&admin_token),
-            Some(json!({ "permissions": ["club.invitations.manage"] })),
+            Some(json!({ "permissions": ["club.intake.manage"] })),
         )
         .await;
     assert_eq!(status, StatusCode::OK);
     let (status, _) = app
         .request(
             Method::POST,
-            "/api/v1/clubs/usi/memberships",
+            "/api/v1/clubs/usi/members",
             Some(&staff_token),
-            Some(json!({ "email": "candidate@example.com", "role_id": member_role.id })),
+            Some(json!({ "first_name": "Test", "last_name": "User", "email": "candidate@example.com", "role_id": member_role.id })),
         )
         .await;
     assert_eq!(status, StatusCode::OK);
@@ -269,9 +274,9 @@ async fn member_intake_permission_allows_direct_add_but_not_admin_grant() {
     let (status, _) = app
         .request(
             Method::POST,
-            "/api/v1/clubs/usi/memberships",
+            "/api/v1/clubs/usi/members",
             Some(&staff_token),
-            Some(json!({ "email": "candidate2@example.com", "role_id": admin_role.id })),
+            Some(json!({ "first_name": "Test", "last_name": "User", "email": "candidate2@example.com", "role_id": admin_role.id })),
         )
         .await;
     assert_eq!(status, StatusCode::FORBIDDEN);

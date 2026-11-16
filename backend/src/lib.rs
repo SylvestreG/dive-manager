@@ -7,6 +7,7 @@ pub mod ffessm_licence;
 pub mod identity;
 pub mod mailer;
 pub mod maintenance;
+pub mod onboarding;
 pub mod pagination;
 pub mod rate_limit;
 pub mod tenancy;

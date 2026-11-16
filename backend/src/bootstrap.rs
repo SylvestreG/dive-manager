@@ -32,7 +32,7 @@ pub async fn bootstrap_global_admins(
             continue;
         }
         match Users::find()
-            .filter(users::Column::Email.eq(email.clone()))
+            .filter(users::Column::Email.eq(Some(email.clone())))
             .one(db)
             .await?
         {
@@ -48,11 +48,13 @@ pub async fn bootstrap_global_admins(
                 let created = now();
                 users::ActiveModel {
                     id: Set(Uuid::now_v7()),
-                    email: Set(email.clone()),
+                    email: Set(Some(email.clone())),
                     first_name: Set(first_name),
                     last_name: Set(String::new()),
-                    status: Set(users::STATUS_INVITED.to_string()),
+                    status: Set(users::STATUS_ACTIVE.to_string()),
                     is_global_admin: Set(true),
+                    activated_at: Set(None),
+                    email_verified_at: Set(None),
                     created_at: Set(created),
                     updated_at: Set(created),
                 }
@@ -60,7 +62,7 @@ pub async fn bootstrap_global_admins(
                 .await?;
                 tracing::info!(
                     email,
-                    "bootstrap: created invited global admin (logs in via magic link)"
+                    "bootstrap: created global admin (first login via magic link)"
                 );
             }
         }

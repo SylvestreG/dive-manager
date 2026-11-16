@@ -48,8 +48,8 @@ async fn global_admin_management_grants_revokes_and_guards() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["granted"], true);
 
-    // Granting to an unknown email creates a platform invitation instead;
-    // accepting it yields a global admin.
+    // Granting to an unknown email creates the account directly (ADR-0009)
+    // and sends a welcome email — no invitation token.
     let (status, body) = app
         .request(
             Method::POST,
@@ -63,18 +63,24 @@ async fn global_admin_management_grants_revokes_and_guards() {
         )
         .await;
     assert_eq!(status, StatusCode::OK);
-    assert!(body["invitation_id"].is_string());
-    let invitation_token = app.last_email_token("/auth/invitations/");
-    let (status, accepted) = app
+    assert_eq!(body["created"], true);
+    assert_eq!(
+        app.state.mailer.captured().last().unwrap().to,
+        "new-admin@example.com"
+    );
+    let (_, admins) = app
         .request(
-            Method::POST,
-            &format!("/api/v1/auth/invitations/{invitation_token}/accept"),
+            Method::GET,
+            "/api/v1/platform/global-admins",
+            Some(&token),
             None,
-            Some(json!({})),
         )
         .await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(accepted["user"]["is_global_admin"], true);
+    assert!(admins
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|a| a["email"] == "new-admin@example.com"));
 
     // Revoking works, self-revocation and last-admin removal are refused.
     let (status, _) = app

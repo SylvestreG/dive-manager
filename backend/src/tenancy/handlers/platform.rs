@@ -13,15 +13,15 @@ use crate::identity::extractors::CurrentUser;
 use crate::identity::handlers::UserDto;
 use crate::identity::services::sessions::AuthSession;
 use crate::identity::services::users as user_service;
-use crate::identity::services::{audit, audit::Actor, sessions};
+use crate::identity::services::{audit, audit::Actor, emails, sessions};
 use crate::pagination::PageParams;
-use crate::tenancy::entities::{club_roles, clubs, prelude::*};
-use crate::tenancy::services::{invitations, seed};
+use crate::tenancy::entities::{clubs, prelude::*};
+use crate::tenancy::services::seed;
 use crate::{normalize_email, now, AppState};
 
 /// Every platform action requires a real, non-impersonating global admin
 /// (foundation design §5: sensitive actions refuse impersonating principals).
-fn require_real_global_admin(auth: &AuthSession) -> Result<(), AppError> {
+pub(crate) fn require_real_global_admin(auth: &AuthSession) -> Result<(), AppError> {
     if auth.is_impersonating() {
         return Err(AppError::Forbidden(
             "action not allowed while impersonating".to_string(),
@@ -186,50 +186,10 @@ pub async fn update_club(
 }
 
 #[derive(Deserialize)]
-pub struct InviteRequest {
+pub struct AddGlobalAdminRequest {
     pub email: String,
     pub first_name: String,
     pub last_name: String,
-}
-
-/// Invites the club's first (or another) Administrateur.
-pub async fn invite_club_admin(
-    State(state): State<AppState>,
-    CurrentUser(auth): CurrentUser,
-    Path(club_id): Path<Uuid>,
-    Json(body): Json<InviteRequest>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    require_real_global_admin(&auth)?;
-    let club = Clubs::find_by_id(club_id)
-        .filter(clubs::Column::Status.eq(clubs::STATUS_ACTIVE))
-        .one(&state.db)
-        .await?
-        .ok_or_else(|| AppError::NotFound("club not found".to_string()))?;
-    let admin_role = ClubRoles::find()
-        .filter(club_roles::Column::ClubId.eq(club.id))
-        .filter(club_roles::Column::IsAdmin.eq(true))
-        .one(&state.db)
-        .await?
-        .ok_or_else(|| {
-            tracing::error!(club_id = %club.id, "club has no admin role (seed invariant)");
-            AppError::Internal
-        })?;
-
-    let inviter_name = format!("{} {}", auth.real_user.first_name, auth.real_user.last_name);
-    let invitation = invitations::create_invitation(
-        &state,
-        Actor::from(&auth),
-        &inviter_name,
-        invitations::NewInvitation {
-            email: &body.email,
-            first_name: &body.first_name,
-            last_name: &body.last_name,
-            club: Some(&club),
-            role: Some(&admin_role),
-        },
-    )
-    .await?;
-    Ok(Json(json!({ "invitation_id": invitation.id })))
 }
 
 pub async fn list_global_admins(
@@ -241,11 +201,12 @@ pub async fn list_global_admins(
     Ok(Json(admins.iter().map(UserDto::from).collect()))
 }
 
-/// Grants global-admin to an existing user, or invites a new one.
+/// Grants global-admin to an existing user, or creates the account (with a
+/// welcome email — ADR-0009 replaced invitations).
 pub async fn add_global_admin(
     State(state): State<AppState>,
     CurrentUser(auth): CurrentUser,
-    Json(body): Json<InviteRequest>,
+    Json(body): Json<AddGlobalAdminRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     require_real_global_admin(&auth)?;
     let email = normalize_email(&body.email);
@@ -275,21 +236,27 @@ pub async fn add_global_admin(
         return Ok(Json(json!({ "granted": true })));
     }
 
-    let inviter_name = format!("{} {}", auth.real_user.first_name, auth.real_user.last_name);
-    let invitation = invitations::create_invitation(
-        &state,
+    let txn = state.db.begin().await?;
+    let user =
+        user_service::create_user(&txn, Some(&email), &body.first_name, &body.last_name).await?;
+    let user = user_service::set_global_admin(&txn, user, true).await?;
+    audit::record(
+        &txn,
         Actor::from(&auth),
-        &inviter_name,
-        invitations::NewInvitation {
-            email: &body.email,
-            first_name: &body.first_name,
-            last_name: &body.last_name,
-            club: None,
-            role: None,
-        },
+        None,
+        "global_admin.granted",
+        "user",
+        Some(user.id),
+        json!({ "email": email, "created": true }),
     )
     .await?;
-    Ok(Json(json!({ "invitation_id": invitation.id })))
+    txn.commit().await?;
+    let url = emails::login_url(&state.config.base_url, &email);
+    let (subject, mail_body) = emails::welcome_email(&user.first_name, None, &url);
+    if let Err(error) = state.mailer.send(&email, &subject, mail_body).await {
+        tracing::error!(?error, user_id = %user.id, "failed to send welcome email");
+    }
+    Ok(Json(json!({ "granted": true, "created": true })))
 }
 
 pub async fn remove_global_admin(
