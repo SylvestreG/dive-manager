@@ -137,7 +137,7 @@ auth_sessions
   token_hash    bytea UNIQUE NOT NULL          -- opaque bearer token, hashed
   impersonated_user_id uuid NULL → users       -- set while impersonating
   created_at, last_seen_at
-  expires_at    timestamptz NOT NULL           -- sliding, e.g. 30 days idle cap
+  expires_at    timestamptz NOT NULL           -- sliding, e.g. 180 days idle cap
   revoked_at    timestamptz NULL
   INDEX (user_id)
 
@@ -325,7 +325,8 @@ link, which already covers it).
 
 ### Sessions
 Opaque 32-byte bearer token, stored hashed; sliding `expires_at` (idle
-timeout ~30 days, absolute cap ~90); `revoked_at` for logout / "log out
+timeout 180 days, absolute cap 365 — product decision 2026-11-16: users
+should rarely need a new magic link); `revoked_at` for logout / "log out
 everywhere" / admin revocation. Role and admin changes are effective on the
 next request because authorization always reads current DB state — nothing
 authorization-relevant is baked into the token.
