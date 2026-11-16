@@ -61,8 +61,8 @@ impl Default for AuthConfig {
     fn default() -> Self {
         Self {
             bootstrap_admin_emails: vec![],
-            session_idle_days: 30,
-            session_max_days: 90,
+            session_idle_days: 180,
+            session_max_days: 365,
             magic_link_hours: 12,
             invitation_days: 7,
         }
