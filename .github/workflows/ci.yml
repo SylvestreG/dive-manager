@@ -207,10 +207,14 @@ jobs:
             rm -rf "$SRC"
 
             # ExecStartPre runs `dive-manager migrate` before serving.
-            sudo systemctl restart dive-manager
-            sleep 3
-            sudo systemctl is-active --quiet dive-manager || {
-              sudo journalctl -u dive-manager -n 50 --no-pager
+            # Always dump the unit's journal on failure (restart itself can
+            # fail when ExecStartPre dies, which set -e would cut short).
+            fail() {
+              sudo systemctl status dive-manager --no-pager -l || true
+              sudo journalctl -u dive-manager -n 80 --no-pager || true
               exit 1
             }
+            sudo systemctl restart dive-manager || fail
+            sleep 3
+            sudo systemctl is-active --quiet dive-manager || fail
             echo "✅ dive-manager deployed"
