@@ -5,8 +5,43 @@ on:
     branches: [master, main]
   pull_request:
 
+permissions:
+  contents: read
+  actions: read # look up / download release artifacts from earlier runs
+
+# Build once, deploy the tested artifact:
+# - every run tests AND builds the production bundle (in parallel), then
+#   `package` publishes `release-<tree>` only when everything is green;
+#   <tree> is the git tree hash, i.e. the exact source content;
+# - on push to main, `reuse` looks for an existing `release-<tree>` (e.g.
+#   from the PR run that tested this exact content): when found, tests and
+#   builds are skipped and that artifact is deployed as-is.
 jobs:
+  reuse:
+    runs-on: ubuntu-latest
+    outputs:
+      tree: ${{ steps.tree.outputs.tree }}
+      run_id: ${{ steps.find.outputs.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: tree
+        run: echo "tree=$(git rev-parse 'HEAD^{tree}')" >> "$GITHUB_OUTPUT"
+      - id: find
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RUN_ID=$(gh api \
+            "repos/${{ github.repository }}/actions/artifacts?name=release-${{ steps.tree.outputs.tree }}&per_page=20" \
+            --jq '[.artifacts[] | select(.expired == false)][0].workflow_run.id // empty')
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          if [ -n "$RUN_ID" ]; then
+            echo "♻️ Reusing tested release from run $RUN_ID — skipping tests and builds"
+          fi
+
   backend:
+    needs: reuse
+    if: needs.reuse.outputs.run_id == ''
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -44,7 +79,29 @@ jobs:
       - name: Tests
         run: cargo nextest run --workspace
 
+  # Release binary, built in parallel with the backend tests.
+  backend-release:
+    needs: reuse
+    if: needs.reuse.outputs.run_id == ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
+      - name: Build backend (release)
+        working-directory: backend
+        run: cargo build --release --bin dive-manager
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backend-bin
+          path: backend/target/release/dive-manager
+          retention-days: 1
+
   frontend:
+    needs: reuse
+    if: needs.reuse.outputs.run_id == ''
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -59,47 +116,58 @@ jobs:
       - run: npm ci
       - name: Tests
         run: npm test
-      - name: Type-check and build
-        run: npm run build
+      # Type-check + the production bundle actually deployed (/v2).
+      - name: Type-check and build (web, /v2)
+        run: npm run build:web-prod
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist/
+          retention-days: 1
 
-  # Production deploy: only on push to main, only once backend AND frontend
-  # checks are green. Served at https://dive-manager.com/v2 next to the legacy
-  # app (see nginx config); migrations run via systemd ExecStartPre.
+  # Published only when tests and builds are all green: the existence of
+  # `release-<tree>` means "this exact content was tested".
+  package:
+    needs: [reuse, backend, backend-release, frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: backend-bin
+          path: release
+      - uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: release/frontend
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ needs.reuse.outputs.tree }}
+          path: release/
+          retention-days: 14
+
+  # Production deploy: push to main only. Served at
+  # https://www.dive-manager.com/v2 next to the legacy app (see nginx
+  # config); migrations run via the systemd unit's ExecStartPre.
   deploy:
-    needs: [backend, frontend]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [reuse, package]
+    if: >-
+      !cancelled() &&
+      github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+      (needs.package.result == 'success' ||
+       (needs.reuse.result == 'success' && needs.reuse.outputs.run_id != ''))
     runs-on: ubuntu-latest
     environment: production
     concurrency:
       group: deploy-production
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - name: Download tested release
+        uses: actions/download-artifact@v4
         with:
-          workspaces: backend
-      - name: Build backend (release)
-        working-directory: backend
-        run: cargo build --release --bin dive-manager
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-      - name: Build frontend (web, /v2)
-        working-directory: frontend
-        run: |
-          npm ci
-          npm run build:web-prod
-
-      - name: Stage release
-        run: |
-          mkdir -p release/frontend
-          cp backend/target/release/dive-manager release/
-          cp -r frontend/dist/. release/frontend/
+          name: release-${{ needs.reuse.outputs.tree }}
+          path: release
+          run-id: ${{ needs.reuse.outputs.run_id || github.run_id }}
+          github-token: ${{ github.token }}
 
       - name: Upload release to server
         uses: appleboy/scp-action@v0.1.7
@@ -125,7 +193,7 @@ jobs:
             SRC=/tmp/dive-manager-deploy
             DEST=/opt/dive-manager
 
-            # Backend binary (install -m swaps the file; safe while running).
+            # Backend binary (install swaps the file; artifacts lose the exec bit).
             sudo install -o dive-manager -g dive-manager -m 755 "$SRC/dive-manager" "$DEST/bin/dive-manager"
 
             # Frontend: stage then swap, so nginx never serves a half-copied dir.
