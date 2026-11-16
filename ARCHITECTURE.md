@@ -47,7 +47,7 @@ HTTP handlers  →  domain services  →  repositories  →  PostgreSQL
   the token was minted for.
 
 ### Security baseline
-- Argon2 passwords, rate-limited login, single-use time-limited tokens,
+- No passwords (ADR-0009), rate-limited login, single-use time-limited tokens,
   strict CORS, HTML escaping in every template, no secrets in the repo,
   audit log for sensitive actions (validation changes, impersonation, role
   changes).
@@ -75,7 +75,7 @@ HTTP handlers  →  domain services  →  repositories  →  PostgreSQL
 |---|---|
 | HTTP framework | **Axum** (ADR-0006) |
 | DB layer | **SeaORM** for migrations and all queries; **no raw SQL** outside DSL-impossible migration statements (ADR-0006, strong project rule) |
-| Auth | Invitation-only; OIDC (Google at launch) + login magic links (12 h) + optional passwords; revocable server-side sessions, 30 d sliding / 90 d max (ADR-0004) |
+| Auth | Admin-curated accounts (no invitations); login magic links (12 h) + OIDC Google/Microsoft/Apple (in progress), no passwords; revocable server-side sessions, 180 d sliding / 365 d max (ADR-0004, ADR-0009) |
 | Frontend | React + TS + Vite PWA, Capacitor for stores, mobile-first review rule (ADR-0005) |
 
 ## Still open

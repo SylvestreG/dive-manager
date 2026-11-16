@@ -10,10 +10,18 @@ APIs, never through another module's tables.
 
 ## Foundation (not club-toggleable)
 
-### `identity` — status: **implemented** (`backend/src/identity/`; OIDC Google = next slice)
-Users, authentication (login magic links + optional passwords; OIDC schema
-ready, flow pending), revocable sessions, bootstrap, audit log. No club
-knowledge. Design: `docs/design/foundation-module.md`.
+### `identity` — status: **implemented**, rework in progress (`backend/src/identity/`)
+Users (email optional, `activated_at`), authentication (login magic links;
+OIDC Google/Microsoft = auth slice 2 — ADR-0009, no passwords), revocable
+sessions, bootstrap, audit log. No club knowledge. Designs:
+`docs/design/foundation-module.md`, `docs/design/auth-onboarding.md`.
+
+### `onboarding` — status: **implementing** (`backend/src/onboarding/`; slice 1 done)
+How people enter the platform (ADR-0009): manual member intake
+(`POST /clubs/{slug}/members`, platform "add club admin"); next slices:
+access requests + club join codes + review queues, member CSV import.
+Depends on `identity`, `tenancy`, `users`. Design:
+`docs/design/auth-onboarding.md`.
 
 ### `tenancy` — status: **implemented** (`backend/src/tenancy/`)
 Clubs, memberships (user ↔ club, with roles), club configuration (locations/
