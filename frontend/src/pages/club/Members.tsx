@@ -205,8 +205,12 @@ function AddMemberForm({
   const [roleId, setRoleId] = useState(defaultRoleId);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AddMemberResult | null>(null);
-  const set = (key: keyof typeof empty) => (value: string) =>
+  // Any edit invalidates a pending "check": the confirm button must only
+  // ever confirm the account that was actually shown.
+  const set = (key: keyof typeof empty) => (value: string) => {
     setForm((f) => ({ ...f, [key]: value }));
+    setResult(null);
+  };
   const add = useMutation({
     meta: { inlineError: true },
     mutationFn: (confirmExisting: boolean) =>
@@ -272,7 +276,10 @@ function AddMemberForm({
           <Select
             className="w-full"
             value={roleId || defaultRoleId}
-            onChange={(e) => setRoleId(e.target.value)}
+            onChange={(e) => {
+              setRoleId(e.target.value);
+              setResult(null);
+            }}
           >
             {roles.map((role) => (
               <option key={role.id} value={role.id}>

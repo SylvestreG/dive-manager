@@ -148,13 +148,29 @@ pub async fn add_member<C: ConnectionTrait>(
         )),
     });
 
+    // Serialize concurrent intakes of the same account (two clubs adding the
+    // same newcomer must not both see it as club-managed).
+    let user = user_service::lock_for_update(conn, user.id).await?;
     let managed = is_club_managed_newcomer(conn, &user).await?;
     if !names_match && !new.confirm_existing {
-        // Read-only comparison so the admin sees what differs.
+        // The person is NOT a member of the acting club: reveal nothing of
+        // their profile — only that the names differ (and which fields
+        // would differ, without values). Audited: it discloses the holder's
+        // name to the acting club.
         let merge =
             profiles::merge_intake(conn, user.id, new.profile, FillMode::ReportOnly).await?;
-        let mut diffs = merge.diffs;
+        let mut diffs: Vec<FieldDiff> = merge.diffs.into_iter().map(FieldDiff::redacted).collect();
         diffs.splice(0..0, name_diff);
+        audit::record(
+            conn,
+            actor,
+            Some(club.id),
+            "member.intake_check",
+            "user",
+            Some(user.id),
+            json!({ "diff_fields": diffs.iter().map(|d| d.field).collect::<Vec<_>>() }),
+        )
+        .await?;
         return Ok(IntakeResult {
             user,
             membership_id: None,
@@ -170,7 +186,14 @@ pub async fn add_member<C: ConnectionTrait>(
         FillMode::ReportOnly
     };
     let merge = profiles::merge_intake(conn, user.id, new.profile, mode).await?;
-    let mut diffs = merge.diffs;
+    // Stored values of an account shared with other clubs (or that logged
+    // in) are its owner's data: field names only. The member sheet shows
+    // the profile through the regular member-view rules.
+    let mut diffs: Vec<FieldDiff> = if managed {
+        merge.diffs
+    } else {
+        merge.diffs.into_iter().map(FieldDiff::redacted).collect()
+    };
     diffs.splice(0..0, name_diff);
 
     audit::record(

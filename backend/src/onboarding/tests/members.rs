@@ -2,7 +2,7 @@ use axum::http::{Method, StatusCode};
 use sea_orm::*;
 use serde_json::json;
 
-use crate::identity::entities::{prelude::Users, users};
+use crate::identity::entities::{audit_log, prelude::AuditLog, prelude::Users, users};
 use crate::test_support::TestApp;
 use crate::users::entities::{prelude::UserProfiles, user_profiles};
 
@@ -177,6 +177,17 @@ async fn name_mismatch_needs_confirmation_and_shared_accounts_are_never_written(
         .map(|d| d["field"].as_str().unwrap())
         .collect();
     assert_eq!(fields, ["name", "birthdate"]);
+    // Cross-club read guard: even a full club admin learns NOTHING of the
+    // profile of someone outside their club — only which fields differ.
+    assert!(body["diffs"][1]["stored"].is_null(), "{body}");
+    assert!(!body.to_string().contains("1985-03-12"));
+    let probes = AuditLog::find()
+        .filter(audit_log::Column::Action.eq("member.intake_check"))
+        .filter(audit_log::Column::ClubId.eq(club_a.id))
+        .count(&app.state.db)
+        .await
+        .unwrap();
+    assert_eq!(probes, 1, "the check (which reveals the name) is audited");
     let (_, members) = app
         .request(
             Method::GET,
@@ -205,6 +216,10 @@ async fn name_mismatch_needs_confirmation_and_shared_accounts_are_never_written(
     assert_eq!(
         body["user"]["id"], created["user"]["id"],
         "same person, no duplicate"
+    );
+    assert!(
+        !body.to_string().contains("1985-03-12"),
+        "shared account: stored values stay hidden after joining too"
     );
 
     let user = Users::find_by_id(paul_id)

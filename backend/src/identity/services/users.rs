@@ -49,6 +49,19 @@ pub async fn count_active_global_admins<C: ConnectionTrait>(conn: &C) -> Result<
         .await?)
 }
 
+/// Re-reads a user with a row lock (`FOR UPDATE`) inside the caller's
+/// transaction — serializes decisions that depend on the account's state.
+pub async fn lock_for_update<C: ConnectionTrait>(
+    conn: &C,
+    user_id: Uuid,
+) -> Result<users::Model, AppError> {
+    Users::find_by_id(user_id)
+        .lock_exclusive()
+        .one(conn)
+        .await?
+        .ok_or_else(|| AppError::NotFound("user not found".to_string()))
+}
+
 pub async fn find_by_email<C: ConnectionTrait>(
     conn: &C,
     email: &str,
