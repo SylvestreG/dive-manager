@@ -263,23 +263,53 @@ pub struct IntakeFields {
 
 /// A field the intake brought that differs from the stored value — reported,
 /// never applied (auth-onboarding design R22: imports never overwrite).
+/// Values are `None` when the caller may not see profile data (M1: intake
+/// permission alone does not grant `club.members.view`).
 #[derive(Debug, Clone, serde::Serialize, PartialEq)]
 pub struct FieldDiff {
     pub field: &'static str,
-    pub stored: String,
-    pub incoming: String,
+    pub stored: Option<String>,
+    pub incoming: Option<String>,
 }
 
-/// Fills EMPTY profile fields from an admin intake and reports the fields
-/// that differ. Existing values are never overwritten: the profile is
-/// user-global, possibly shared with other clubs. Goes through the regular
-/// profile validation (`apply`). Returns the diffs (empty = nothing to
-/// review); no write when there is nothing to fill.
-pub async fn fill_gaps<C: ConnectionTrait>(
+impl FieldDiff {
+    pub fn redacted(self) -> FieldDiff {
+        FieldDiff {
+            field: self.field,
+            stored: None,
+            incoming: None,
+        }
+    }
+}
+
+/// What an intake did (or would do) to a profile.
+#[derive(Debug, Default)]
+pub struct IntakeMerge {
+    /// Fields whose stored value differs from the incoming one (never applied).
+    pub diffs: Vec<FieldDiff>,
+    /// Empty fields the intake filled (`FillMode::Fill`) — for the audit.
+    pub filled: Vec<&'static str>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FillMode {
+    /// Fill empty fields (account the acting club manages, or a new one).
+    Fill,
+    /// Only report differences; write nothing (account the club does not
+    /// manage — auth-onboarding design R4/R22).
+    ReportOnly,
+}
+
+/// Compares an admin intake with the stored profile: reports differing
+/// fields and, in `FillMode::Fill`, fills EMPTY ones. Existing values are
+/// never overwritten (the profile is user-global). Writes go through the
+/// regular profile validation (`apply`); no write when nothing is filled.
+pub async fn merge_intake<C: ConnectionTrait>(
     conn: &C,
     user_id: Uuid,
     fields: IntakeFields,
-) -> Result<Vec<FieldDiff>, AppError> {
+    mode: FillMode,
+) -> Result<IntakeMerge, AppError> {
     fn clean(value: Option<String>) -> Option<String> {
         value
             .map(|v| v.trim().to_string())
@@ -296,17 +326,17 @@ pub async fn fill_gaps<C: ConnectionTrait>(
     let existing = get(conn, user_id).await?;
     let mut data = ProfileData::from_existing(existing.as_ref());
     let mut diffs = Vec::new();
-    let mut changed = false;
+    let mut filled = Vec::new();
 
     match (data.birthdate, fields.birthdate) {
         (None, Some(new)) => {
             data.birthdate = Some(new);
-            changed = true;
+            filled.push("birthdate");
         }
         (Some(old), Some(new)) if old != new => diffs.push(FieldDiff {
             field: "birthdate",
-            stored: old.to_string(),
-            incoming: new.to_string(),
+            stored: Some(old.to_string()),
+            incoming: Some(new.to_string()),
         }),
         _ => {}
     }
@@ -317,23 +347,25 @@ pub async fn fill_gaps<C: ConnectionTrait>(
         match (slot.as_ref(), incoming) {
             (None, Some(new)) => {
                 *slot = Some(new);
-                changed = true;
+                filled.push(field);
             }
             (Some(old), Some(new)) if *old != new => diffs.push(FieldDiff {
                 field,
-                stored: old.clone(),
-                incoming: new,
+                stored: Some(old.clone()),
+                incoming: Some(new),
             }),
             _ => {}
         }
     }
 
-    if changed {
+    if mode == FillMode::ReportOnly {
+        filled.clear();
+    } else if !filled.is_empty() {
         let certifications = derived::parse_certifications(
             &crate::users::services::certifications::list(conn, user_id).await?,
         );
         let statuses = crate::users::services::training_statuses::list(conn, user_id).await?;
         apply(conn, user_id, existing, data, &certifications, &statuses).await?;
     }
-    Ok(diffs)
+    Ok(IntakeMerge { diffs, filled })
 }

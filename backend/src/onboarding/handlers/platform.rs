@@ -9,7 +9,7 @@ use uuid::Uuid;
 use crate::errors::AppError;
 use crate::identity::extractors::CurrentUser;
 use crate::identity::services::audit::Actor;
-use crate::onboarding::handlers::members::AddMemberResponse;
+use crate::onboarding::handlers::members::{AddMemberResponse, IntakeUserDto};
 use crate::onboarding::services::intake::{self, NewMember};
 use crate::tenancy::handlers::platform::require_real_global_admin;
 use crate::tenancy::services::roles;
@@ -51,6 +51,9 @@ pub async fn add_club_admin(
             last_name: body.last_name,
             email: Some(body.email),
             profile: IntakeFields::default(),
+            // A platform admin names a club administrator: an existing
+            // account under another name is still that account.
+            confirm_existing: true,
         },
     )
     .await?;
@@ -58,7 +61,7 @@ pub async fn add_club_admin(
     intake::send_welcome(&state, &result.user, Some(&club.name)).await;
 
     Ok(Json(AddMemberResponse {
-        user: (&result.user).into(),
+        user: IntakeUserDto::from(&result.user),
         membership_id: result.membership_id,
         role_id: role.id,
         role_name: role.name,

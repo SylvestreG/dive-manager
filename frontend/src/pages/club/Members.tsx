@@ -187,8 +187,18 @@ function MemberRow({
  * created — with or without an email. Existing values are never overwritten;
  * differences are listed for review.
  */
-function AddMemberForm({ slug, roles }: { slug: string; roles: RoleDto[] }) {
+function AddMemberForm({
+  slug,
+  roles: allRoles,
+  canGrantAdmin,
+}: {
+  slug: string;
+  roles: RoleDto[];
+  canGrantAdmin: boolean;
+}) {
   const queryClient = useQueryClient();
+  // Granting the admin role needs club.roles.manage (backend rule).
+  const roles = canGrantAdmin ? allRoles : allRoles.filter((r) => !r.is_admin);
   const defaultRoleId = roles.find((r) => !r.is_admin)?.id ?? "";
   const empty = { first_name: "", last_name: "", email: "", birthdate: "" };
   const [form, setForm] = useState(empty);
@@ -199,19 +209,23 @@ function AddMemberForm({ slug, roles }: { slug: string; roles: RoleDto[] }) {
     setForm((f) => ({ ...f, [key]: value }));
   const add = useMutation({
     meta: { inlineError: true },
-    mutationFn: () =>
+    mutationFn: (confirmExisting: boolean) =>
       api.club(slug).addMember({
         first_name: form.first_name,
         last_name: form.last_name,
         email: form.email.trim() || undefined,
         birthdate: form.birthdate || undefined,
         role_id: roleId || defaultRoleId,
+        confirm_existing: confirmExisting,
       }),
     onSuccess: (added) => {
       setError(null);
       setResult(added);
-      setForm(empty);
-      queryClient.invalidateQueries({ queryKey: ["club", slug, "members"] });
+      if (added.outcome !== "check") {
+        // Keep the form on "check": the admin confirms or fixes the email.
+        setForm(empty);
+        queryClient.invalidateQueries({ queryKey: ["club", slug, "members"] });
+      }
     },
     onError: (e) => {
       setResult(null);
@@ -274,25 +288,46 @@ function AddMemberForm({ slug, roles }: { slug: string; roles: RoleDto[] }) {
             !(roleId || defaultRoleId) ||
             add.isPending
           }
-          onClick={() => add.mutate()}
+          onClick={() => add.mutate(false)}
         >
           {m.add}
         </Button>
         <FormFeedback
           error={error}
           success={
-            result &&
-            (result.outcome === "created" ? m.created : m.addedExisting)
+            !result || result.outcome === "check"
+              ? null
+              : result.outcome === "created"
+                ? m.created
+                : m.addedExisting
           }
         />
+        {result?.outcome === "check" && (
+          <div className="flex flex-col gap-2 rounded-lg bg-warning-50 p-3 text-sm">
+            <div>
+              {m.checkQuestion(
+                `${result.user.first_name} ${result.user.last_name}`,
+              )}
+            </div>
+            <Button
+              variant="secondary"
+              disabled={add.isPending}
+              onClick={() => add.mutate(true)}
+            >
+              {m.checkConfirm}
+            </Button>
+          </div>
+        )}
         {result && result.diffs.length > 0 && (
           <div className="rounded-lg bg-warning-50 p-3 text-xs text-ink">
             <div className="font-semibold">{m.diffsTitle}</div>
             <ul className="mt-1 list-disc pl-4">
               {result.diffs.map((d) => (
                 <li key={d.field}>
-                  {m.diffField[d.field]} : {d.stored} → {m.diffKept}{" "}
-                  ({m.diffEntered} {d.incoming})
+                  {m.diffField[d.field]}
+                  {d.stored !== null
+                    ? ` : ${d.stored} → ${m.diffKept} (${m.diffEntered} ${d.incoming})`
+                    : ` : ${m.diffHidden}`}
                 </li>
               ))}
             </ul>
@@ -358,7 +393,11 @@ export default function Members() {
         </>
       )}
       {canIntake && roles.data && (
-        <AddMemberForm slug={club.slug} roles={roles.data} />
+        <AddMemberForm
+          slug={club.slug}
+          roles={roles.data}
+          canGrantAdmin={canManageRoles}
+        />
       )}
     </div>
   );

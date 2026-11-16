@@ -165,20 +165,30 @@ export interface NewMember {
   licence_number?: string;
   role_id: string;
   send_welcome?: boolean;
+  /** Confirms a previous "check" outcome (email known, names differ). */
+  confirm_existing?: boolean;
 }
-/** A stored value that differs from what was entered (never overwritten). */
+/** A stored value that differs from what was entered (never overwritten).
+ * Values are null when the caller may not view member data. */
 export interface FieldDiff {
   field: "name" | "birthdate" | "phone" | "licence_number";
-  stored: string;
-  incoming: string;
+  stored: string | null;
+  incoming: string | null;
+}
+export interface IntakeUser {
+  id: string;
+  email: string | null;
+  first_name: string;
+  last_name: string;
 }
 export interface AddMemberResult {
-  user: UserDto;
-  membership_id: string;
+  user: IntakeUser;
+  /** Null for "check": nothing was written. */
+  membership_id: string | null;
   role_id: string;
   role_name: string;
   is_admin: boolean;
-  outcome: "created" | "added_existing";
+  outcome: "created" | "added_existing" | "check";
   diffs: FieldDiff[];
 }
 export interface ModuleDto {

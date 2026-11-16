@@ -103,3 +103,12 @@ pub async fn create<C: ConnectionTrait>(
     .insert(conn)
     .await?)
 }
+
+/// Number of memberships (any status, any club) of `user_id` — feeds the
+/// "club-managed account" predicate (auth-onboarding design R4).
+pub async fn count_for_user<C: ConnectionTrait>(conn: &C, user_id: Uuid) -> Result<u64, AppError> {
+    Ok(Memberships::find()
+        .filter(memberships::Column::UserId.eq(user_id))
+        .count(conn)
+        .await?)
+}

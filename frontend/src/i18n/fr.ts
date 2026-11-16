@@ -92,6 +92,10 @@ export const t = {
       },
       diffKept: "conservé",
       diffEntered: "saisi :",
+      diffHidden: "différente de la valeur enregistrée (conservée)",
+      checkQuestion: (name: string) =>
+        `Un compte existe déjà avec cet email, au nom de ${name}. Rien n'a été enregistré : s'agit-il bien de la même personne ? Sinon, corrigez l'adresse.`,
+      checkConfirm: "Oui, c'est la même personne — l'ajouter",
     },
     audit: {
       title: "Journal d'activité",

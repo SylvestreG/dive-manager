@@ -35,6 +35,7 @@ async fn migrates_invited_users_passwords_invitations_and_grants() {
     let at = now();
     let invited = Uuid::now_v7();
     let active = Uuid::now_v7();
+    let disabled = Uuid::now_v7();
     let user_cols = [
         "id",
         "email",
@@ -48,6 +49,7 @@ async fn migrates_invited_users_passwords_invitations_and_grants() {
     for (id, email, status) in [
         (invited, "invited@example.com", "invited"),
         (active, "active@example.com", "active"),
+        (disabled, "disabled@example.com", "disabled"),
     ] {
         insert(
             &db,
@@ -147,6 +149,12 @@ async fn migrates_invited_users_passwords_invitations_and_grants() {
     let active_user = Users::find_by_id(active).one(&db).await.unwrap().unwrap();
     assert!(active_user.activated_at.is_some());
     assert!(active_user.email_verified_at.is_some());
+    let disabled_user = Users::find_by_id(disabled).one(&db).await.unwrap().unwrap();
+    assert_eq!(disabled_user.status, users::STATUS_DISABLED);
+    assert!(
+        disabled_user.activated_at.is_some(),
+        "a disabled account had logged in: never club-managed again"
+    );
 
     let grants: Vec<String> = ClubRolePermissions::find()
         .filter(club_role_permissions::Column::RoleId.eq(role))

@@ -140,7 +140,7 @@ async fn admin_creates_member_with_email_and_welcome_mail() {
 }
 
 #[tokio::test]
-async fn existing_account_joins_without_being_overwritten() {
+async fn name_mismatch_needs_confirmation_and_shared_accounts_are_never_written() {
     let app = TestApp::new().await;
     let club_a = club_with_admin(&app, "club-a").await;
     let club_b = club_with_admin(&app, "club-b").await;
@@ -156,22 +156,19 @@ async fn existing_account_joins_without_being_overwritten() {
     .await;
     assert_eq!(status, StatusCode::OK, "{created}");
     let paul_id: uuid::Uuid = created["user"]["id"].as_str().unwrap().parse().unwrap();
+    let mails_before = app.state.mailer.captured().len();
 
-    // Club A enters the same email with other values.
-    let (status, body) = add(
-        &app,
-        &club_a,
-        &club_a.admin_token,
-        json!({ "first_name": "Paolo", "last_name": "Durand", "email": "PAUL@example.com",
-                "birthdate": "1990-01-01", "phone": "0601020304",
-                "role_id": club_a.member_role, "send_welcome": false }),
-    )
-    .await;
+    // Club A enters the same email under another name: CHECK, nothing written.
+    let request = json!({ "first_name": "Paolo", "last_name": "Durand", "email": "PAUL@example.com",
+                          "birthdate": "1990-01-01", "phone": "0601020304",
+                          "role_id": club_a.member_role });
+    let (status, body) = add(&app, &club_a, &club_a.admin_token, request.clone()).await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    assert_eq!(body["outcome"], "added_existing");
-    assert_eq!(
-        body["user"]["id"], created["user"]["id"],
-        "same person, no duplicate"
+    assert_eq!(body["outcome"], "check");
+    assert!(body["membership_id"].is_null());
+    assert!(
+        body["user"].get("is_global_admin").is_none(),
+        "no account probing"
     );
     let fields: Vec<&str> = body["diffs"]
         .as_array()
@@ -180,6 +177,35 @@ async fn existing_account_joins_without_being_overwritten() {
         .map(|d| d["field"].as_str().unwrap())
         .collect();
     assert_eq!(fields, ["name", "birthdate"]);
+    let (_, members) = app
+        .request(
+            Method::GET,
+            "/api/v1/clubs/club-a/members",
+            Some(&club_a.admin_token),
+            None,
+        )
+        .await;
+    assert_eq!(
+        members["total"], 1,
+        "only the admin: no membership on check"
+    );
+    assert_eq!(
+        app.state.mailer.captured().len(),
+        mails_before,
+        "no email on check"
+    );
+
+    // Confirmed: Paul joins club A, but his profile (shared with club B) is
+    // never written by club A.
+    let mut confirmed = request;
+    confirmed["confirm_existing"] = json!(true);
+    let (status, body) = add(&app, &club_a, &club_a.admin_token, confirmed).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["outcome"], "added_existing");
+    assert_eq!(
+        body["user"]["id"], created["user"]["id"],
+        "same person, no duplicate"
+    );
 
     let user = Users::find_by_id(paul_id)
         .one(&app.state.db)
@@ -189,10 +215,9 @@ async fn existing_account_joins_without_being_overwritten() {
     assert_eq!(user.first_name, "Paul", "name never overwritten");
     let stored = profile(&app, paul_id).await.unwrap();
     assert_eq!(stored.birthdate.unwrap().to_string(), "1985-03-12", "kept");
-    assert_eq!(
-        stored.phone.as_deref(),
-        Some("0601020304"),
-        "empty field filled"
+    assert!(
+        stored.phone.is_none(),
+        "not club-managed: empty field NOT filled"
     );
 
     // Adding them again is a conflict.
@@ -205,6 +230,95 @@ async fn existing_account_joins_without_being_overwritten() {
     )
     .await;
     assert_eq!(status, StatusCode::CONFLICT);
+}
+
+#[tokio::test]
+async fn club_managed_account_gets_empty_fields_filled() {
+    let app = TestApp::new().await;
+    let club = club_with_admin(&app, "usi").await;
+    // Never logged in, member of no club (e.g. bootstrap or removed member).
+    let user = app.create_user("newbie@example.com", false, false).await;
+
+    // Names compare accent/case-insensitively ("ÉRIC" = "Eric").
+    users::ActiveModel {
+        id: Set(user.id),
+        first_name: Set("Éric".to_string()),
+        last_name: Set("Lefèvre".to_string()),
+        ..Default::default()
+    }
+    .update(&app.state.db)
+    .await
+    .unwrap();
+    let (status, body) = add(
+        &app,
+        &club,
+        &club.admin_token,
+        json!({ "first_name": "ERIC", "last_name": "LEFEVRE", "email": "newbie@example.com",
+                "phone": "0611223344", "role_id": club.member_role, "send_welcome": false }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["outcome"], "added_existing");
+    assert_eq!(
+        profile(&app, user.id).await.unwrap().phone.as_deref(),
+        Some("0611223344"),
+        "club-managed: empty field filled"
+    );
+
+    // An account that already logged in is never written, even when free.
+    let active = app.create_user("active@example.com", true, false).await;
+    let (status, body) = add(
+        &app,
+        &club,
+        &club.admin_token,
+        json!({ "first_name": "Test", "last_name": "User", "email": "active@example.com",
+                "phone": "0699999999", "role_id": club.member_role, "send_welcome": false }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(
+        profile(&app, active.id).await.is_none(),
+        "no profile created"
+    );
+}
+
+#[tokio::test]
+async fn intake_only_staff_cannot_read_stored_profile_values() {
+    let app = TestApp::new().await;
+    let club_a = club_with_admin(&app, "club-a").await;
+    let club_b = club_with_admin(&app, "club-b").await;
+    add(
+        &app,
+        &club_b,
+        &club_b.admin_token,
+        json!({ "first_name": "Paul", "last_name": "Durand", "email": "paul@example.com",
+                "birthdate": "1985-03-12", "role_id": club_b.member_role, "send_welcome": false }),
+    )
+    .await;
+
+    let staff_role = app
+        .create_role(club_a.id, "Secrétariat", &["club.intake.manage"])
+        .await;
+    let staff = app.create_user("staff@club-a.test", true, false).await;
+    app.add_membership(club_a.id, staff.id, staff_role.id).await;
+    let staff_token = app.session_for(staff.id).await;
+
+    let (status, body) = add(
+        &app,
+        &club_a,
+        &staff_token,
+        json!({ "first_name": "Paul", "last_name": "Durand", "email": "paul@example.com",
+                "birthdate": "2000-01-01", "role_id": club_a.member_role, "send_welcome": false }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let diff = &body["diffs"][0];
+    assert_eq!(diff["field"], "birthdate");
+    assert!(
+        diff["stored"].is_null(),
+        "stored value hidden without members.view"
+    );
+    assert!(diff["incoming"].is_null());
 }
 
 #[tokio::test]

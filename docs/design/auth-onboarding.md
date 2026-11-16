@@ -185,7 +185,11 @@ passwords, config-file admins, CSV with fixed columns and UTF-8 only.
 
   Rows matched by (3) are **"check" rows**: the admin must confirm "same
   person" or choose "new person".
-- R22. **Existing users are never overwritten by an import**:
+- R22. **Existing users are never overwritten by an import or a manual
+  add** (review fix 2026-11-16: profile gaps are filled **only on
+  club-managed accounts** (R4); an email match with different names returns
+  `check` and writes nothing until the admin confirms; stored profile values
+  in the response are hidden from callers without `club.members.view`):
   - empty profile fields are filled;
   - fields that differ are reported in the preview but left unchanged;
   - a matched user who is not yet in the club gets a membership.
@@ -300,7 +304,8 @@ through Google): it becomes `approved` with "resolved by login".
 | Link request → member | – | ❌ | ✅ club-managed only (R4) | ✅ any |
 | Escalate | – | ❌ | ✅ | – |
 | Platform queue | – | ❌ | ❌ | ✅ |
-| Create member manually / import CSV | – | ❌ | ✅ own club, non-admin role | ✅ |
+| Create member manually | – | ❌ | ✅ own club; admin role only with `club.roles.manage` (unchanged foundation rule) | ✅ |
+| Import CSV / approve request | – | ❌ | ✅ own club, non-admin role only | ✅ |
 | Change a member's email | – | own (R12) | club-managed only | ✅ |
 | View a member's login methods (provider names, last use) | – | ❌ | ✅ own club members | ✅ |
 | Unlink a member's identity | – | ❌ | club-managed only (n/a in practice) | ✅ |

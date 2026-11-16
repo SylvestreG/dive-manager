@@ -401,8 +401,6 @@ pub async fn update_membership(
     Ok(Json(json!({ "message": "membership updated" })))
 }
 
-// ---------- invitations ----------
-
 #[derive(Deserialize)]
 pub struct ImpersonateRequest {
     pub user_id: Uuid,

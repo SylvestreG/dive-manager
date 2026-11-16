@@ -41,16 +41,18 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        // 2. Backfill: an `active` user has logged in (invitation acceptance
-        //    and magic-link consumption both opened a session); `invited`
-        //    users never did. Both proofs went through their mailbox.
+        // 2. Backfill: every non-`invited` user has logged in (invitation
+        //    acceptance and magic-link consumption both opened a session) —
+        //    including `disabled` ones, which must NOT come back as "never
+        //    logged in" (that would make them club-managed, design R4).
+        //    Both proofs went through their mailbox.
         manager
             .exec_stmt(
                 Query::update()
                     .table(Users::Table)
                     .value(Users::ActivatedAt, Expr::col(Users::CreatedAt))
                     .value(Users::EmailVerifiedAt, Expr::col(Users::CreatedAt))
-                    .and_where(Expr::col(Users::Status).eq("active"))
+                    .and_where(Expr::col(Users::Status).ne("invited"))
                     .to_owned(),
             )
             .await?;

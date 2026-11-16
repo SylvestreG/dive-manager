@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::errors::AppError;
-use crate::identity::handlers::UserDto;
+use crate::identity::entities::users;
 use crate::onboarding::services::intake::{self, IntakeOutcome, NewMember};
 use crate::tenancy::context::Tenant;
 use crate::tenancy::permissions::Permission;
@@ -32,12 +32,37 @@ pub struct AddMemberRequest {
     /// Welcome email to the account's address (no-op without one).
     #[serde(default = "default_true")]
     pub send_welcome: bool,
+    /// Confirms a previous `check` outcome (email known, names differ).
+    #[serde(default)]
+    pub confirm_existing: bool,
+}
+
+/// The person as intake staff may see them — deliberately NOT `UserDto`
+/// (no global-admin flag: intake must not become an account probe).
+#[derive(Serialize)]
+pub struct IntakeUserDto {
+    pub id: Uuid,
+    pub email: Option<String>,
+    pub first_name: String,
+    pub last_name: String,
+}
+
+impl From<&users::Model> for IntakeUserDto {
+    fn from(user: &users::Model) -> Self {
+        IntakeUserDto {
+            id: user.id,
+            email: user.email.clone(),
+            first_name: user.first_name.clone(),
+            last_name: user.last_name.clone(),
+        }
+    }
 }
 
 #[derive(Serialize)]
 pub struct AddMemberResponse {
-    pub user: UserDto,
-    pub membership_id: Uuid,
+    pub user: IntakeUserDto,
+    /// Absent for `check` (nothing was written).
+    pub membership_id: Option<Uuid>,
     pub role_id: Uuid,
     pub role_name: String,
     pub is_admin: bool,
@@ -75,22 +100,38 @@ pub async fn add_member(
                 phone: body.phone,
                 licence_number: body.licence_number,
             },
+            confirm_existing: body.confirm_existing,
         },
     )
     .await?;
     txn.commit().await?;
 
-    if body.send_welcome {
+    if body.send_welcome && result.outcome != IntakeOutcome::Check {
         intake::send_welcome(&state, &result.user, Some(&tenant.club.name)).await;
     }
 
+    // Stored profile values are member data: only callers who may view
+    // members see them (the name diff stays — it is what "check" is about).
+    let can_view_members = tenant.require(Permission::ClubMembersView).is_ok();
+    let diffs = result
+        .diffs
+        .into_iter()
+        .map(|d| {
+            if can_view_members || d.field == "name" {
+                d
+            } else {
+                d.redacted()
+            }
+        })
+        .collect();
+
     Ok(Json(AddMemberResponse {
-        user: UserDto::from(&result.user),
+        user: IntakeUserDto::from(&result.user),
         membership_id: result.membership_id,
         role_id: role.id,
         role_name: role.name,
         is_admin: role.is_admin,
         outcome: result.outcome,
-        diffs: result.diffs,
+        diffs,
     }))
 }
