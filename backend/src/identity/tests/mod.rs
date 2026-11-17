@@ -4,5 +4,4 @@
 mod bootstrap;
 mod identity;
 mod magic_links;
-mod passwords;
 mod sessions;

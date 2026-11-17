@@ -3,6 +3,5 @@
 
 mod authorization;
 mod impersonation;
-mod invitations;
 mod isolation;
 mod platform;

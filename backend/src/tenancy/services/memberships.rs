@@ -66,3 +66,49 @@ pub async fn page_with_users(
         .await?;
     Ok(MembershipPage { rows, roles, total })
 }
+
+/// Whether `user_id` has any membership (whatever its status) in `club_id`.
+pub async fn exists<C: ConnectionTrait>(
+    conn: &C,
+    club_id: Uuid,
+    user_id: Uuid,
+) -> Result<bool, AppError> {
+    Ok(Memberships::find()
+        .filter(memberships::Column::ClubId.eq(club_id))
+        .filter(memberships::Column::UserId.eq(user_id))
+        .count(conn)
+        .await?
+        > 0)
+}
+
+/// Creates an active membership. The caller has checked that `role_id`
+/// belongs to `club_id` (tenant isolation) and that no membership exists
+/// (the UNIQUE (club_id, user_id) constraint is the backstop → 409).
+pub async fn create<C: ConnectionTrait>(
+    conn: &C,
+    club_id: Uuid,
+    user_id: Uuid,
+    role_id: Uuid,
+) -> Result<memberships::Model, AppError> {
+    let created = crate::now();
+    Ok(memberships::ActiveModel {
+        id: Set(Uuid::now_v7()),
+        club_id: Set(club_id),
+        user_id: Set(user_id),
+        role_id: Set(role_id),
+        status: Set(memberships::STATUS_ACTIVE.to_string()),
+        created_at: Set(created),
+        updated_at: Set(created),
+    }
+    .insert(conn)
+    .await?)
+}
+
+/// Number of memberships (any status, any club) of `user_id` — feeds the
+/// "club-managed account" predicate (auth-onboarding design R4).
+pub async fn count_for_user<C: ConnectionTrait>(conn: &C, user_id: Uuid) -> Result<u64, AppError> {
+    Ok(Memberships::find()
+        .filter(memberships::Column::UserId.eq(user_id))
+        .count(conn)
+        .await?)
+}

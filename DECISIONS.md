@@ -67,7 +67,9 @@ never grants access.
 
 ## ADR-0004 — Authentication and account model
 
-**Status:** accepted (product owner, 2026-08-17)
+**Status:** accepted (product owner, 2026-08-17). **Partly superseded by
+ADR-0009** (2026-11-16): invitations and passwords are removed; accounts are
+admin-curated; OIDC first-link and unknown-identity rules replaced.
 
 **Problem.** Fosse mixes four auth methods with implicit rules (Gmail domain ⇒
 forced Google login), a config-file admin list frozen into a 24 h irrevocable
@@ -274,3 +276,42 @@ exactly the gates of a direct validator (active member of the club, derived
 grade ≥ the level's requirement, not the diver). The current state and the
 generated PDF carry the designated instructor; the history event and the
 audit log record the admin as the actor (with `on_behalf_of`).
+
+---
+
+## ADR-0009 — Admin-curated accounts, linked login identities, no passwords
+
+**Status:** accepted (product owner, 2026-11-16). Design:
+`docs/design/auth-onboarding.md`. Supersedes ADR-0004 §1 (invitation
+tokens), §3 (passwords; OIDC "invited or existing account" first link).
+
+**Problem.** Invitations (expiring single-use tokens, resend, accept) made
+onboarding heavy for club admins, could not cover members without an email,
+and gave no answer to "someone logs in with an account we do not know".
+Passwords added rate limiting, lockout and hashing for little value next to
+magic links and SSO.
+
+**Decision.**
+1. **Accounts are admin-curated**: created by manual add, CSV import,
+   approval of an access request, or config bootstrap — never by
+   invitation tokens. `users.email` is optional; `activated_at` (first
+   login) replaces the `invited` status.
+2. **Login methods**: magic link to the account email + OIDC identities
+   (Google, Microsoft, Apple; Facebook later) linked by
+   `(provider, subject)`. **No passwords** (passkeys in a later slice).
+3. **First links**: automatic when the provider asserts a trusted email
+   matching the account; otherwise an emailed confirmation link; otherwise
+   an **access request** reviewed by admins.
+4. **Club admin power is bounded by "club-managed" accounts** (never logged
+   in, member of that club only, not a global admin): only those can have an
+   identity linked or their email changed by a club admin; everything else
+   is a platform-admin decision.
+5. Permission `club.invitations.manage` is renamed `club.intake.manage`.
+
+**Trade-offs.** Admins carry a review queue (mitigated by auto-linking and
+suggestions); account existence is visible to club admins during intake
+(accepted, audited); OIDC provider setup is a product-owner task.
+
+**Delivery.** Six slices (design §13). Slice 1 (2026-11-16): passwords and
+invitations removed, manual member intake, platform "add club admin".
+

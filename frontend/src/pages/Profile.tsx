@@ -46,7 +46,7 @@ function IdentityCard({
 }: {
   firstName: string;
   lastName: string;
-  email: string;
+  email: string | null;
 }) {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
@@ -93,7 +93,9 @@ function IdentityCard({
             <div className="truncate font-bold">
               {firstName} {lastName}
             </div>
-            <div className="truncate text-sm text-ink-soft">{email}</div>
+            {email && (
+              <div className="truncate text-sm text-ink-soft">{email}</div>
+            )}
           </div>
           <Button
             variant="ghost"
@@ -223,70 +225,6 @@ function FfessmImportCard({
       )}
       <FormFeedback error={error} />
     </Card>
-  );
-}
-
-function PasswordSection() {
-  const { data: me } = useMe();
-  const queryClient = useQueryClient();
-  const [password, setPassword] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-  if (!me) return null;
-
-  const savePassword = async () => {
-    if (password.length < 8) {
-      setSuccess(null);
-      setError(t.profile.passwordTooShort);
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    setSuccess(null);
-    try {
-      await api.setMyPassword(password);
-      setSuccess(t.profile.passwordSaved);
-      setPassword("");
-      // Refresh has_password so the section flips to "change password".
-      queryClient.invalidateQueries({ queryKey: ["me"] });
-    } catch (e) {
-      setError(translateApiError(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <>
-      <SectionTitle>
-        {me.has_password ? t.profile.changePassword : t.profile.setPassword}
-      </SectionTitle>
-      <Card>
-        <Field
-          label={me.has_password ? t.profile.newPassword : t.common.password}
-          hint={
-            me.has_password ? t.profile.changePasswordHint : t.profile.passwordHint
-          }
-        >
-          <TextInput
-            type="password"
-            autoComplete="new-password"
-            minLength={8}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </Field>
-        <Button
-          className="mt-3"
-          disabled={busy || password.length === 0}
-          onClick={savePassword}
-        >
-          {t.common.save}
-        </Button>
-        <FormFeedback error={error} success={success} />
-      </Card>
-    </>
   );
 }
 
@@ -425,7 +363,6 @@ export default function Profile() {
         </>
       )}
 
-      <PasswordSection />
 
       <div className="mt-8 flex flex-col gap-3">
         <Button variant="secondary" onClick={() => logout(false)}>

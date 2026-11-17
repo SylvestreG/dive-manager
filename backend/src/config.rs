@@ -7,7 +7,7 @@ pub struct Config {
     pub database: DatabaseConfig,
     pub auth: AuthConfig,
     pub smtp: Option<SmtpConfig>,
-    /// Base URL used to build links in emails (magic links, invitations).
+    /// Base URL (frontend origin) used to build links in emails.
     pub base_url: String,
     /// Allowed CORS origins (empty = same-origin only).
     pub cors_allowed_origins: Vec<String>,
@@ -54,7 +54,6 @@ pub struct AuthConfig {
     pub session_idle_days: i64,
     pub session_max_days: i64,
     pub magic_link_hours: i64,
-    pub invitation_days: i64,
 }
 
 impl Default for AuthConfig {
@@ -64,7 +63,6 @@ impl Default for AuthConfig {
             session_idle_days: 180,
             session_max_days: 365,
             magic_link_hours: 12,
-            invitation_days: 7,
         }
     }
 }

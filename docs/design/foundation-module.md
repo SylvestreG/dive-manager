@@ -3,6 +3,11 @@
 Status: **implemented** (2026-08-17, `backend/`). Implements ADR-0002,
 ADR-0003, ADR-0004, ADR-0006.
 
+> **Superseded in part (2026-11-16, ADR-0009):** passwords, invitations and
+> the OIDC first-link rules below are replaced by
+> `docs/design/auth-onboarding.md`. Read that design for anything about
+> login methods or how accounts are created.
+
 **Deviations decided during implementation:**
 1. `citext` replaced by lowercase `TEXT` + `CHECK (email = lower(email))` —
    same guarantee, expressible in pure SeaORM DSL (ADR-0006), no extension.

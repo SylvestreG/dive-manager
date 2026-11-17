@@ -49,11 +49,11 @@ async fn tenant_isolation_blocks_cross_club_access() {
         .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 
-    // Cross-club role id in an invitation is rejected.
+    // Cross-club role id in a member intake is rejected.
     let (status, _) = app
         .request(
             Method::POST,
-            "/api/v1/clubs/club-a/invitations",
+            "/api/v1/clubs/club-a/members",
             Some(&token_a),
             Some(json!({
                 "email": "new@example.com",

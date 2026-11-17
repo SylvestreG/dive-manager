@@ -49,6 +49,19 @@ pub async fn count_active_global_admins<C: ConnectionTrait>(conn: &C) -> Result<
         .await?)
 }
 
+/// Re-reads a user with a row lock (`FOR UPDATE`) inside the caller's
+/// transaction — serializes decisions that depend on the account's state.
+pub async fn lock_for_update<C: ConnectionTrait>(
+    conn: &C,
+    user_id: Uuid,
+) -> Result<users::Model, AppError> {
+    Users::find_by_id(user_id)
+        .lock_exclusive()
+        .one(conn)
+        .await?
+        .ok_or_else(|| AppError::NotFound("user not found".to_string()))
+}
+
 pub async fn find_by_email<C: ConnectionTrait>(
     conn: &C,
     email: &str,
@@ -59,26 +72,45 @@ pub async fn find_by_email<C: ConnectionTrait>(
         .await?)
 }
 
-pub async fn create_active_user<C: ConnectionTrait>(
+/// Creates a user on an admin's behalf (manual add, import, approval,
+/// bootstrap — ADR-0009: accounts are admin-curated). The account is active
+/// but never logged in (`activated_at` NULL) until its first login.
+/// `email` is optional; when present it is normalized and must be unique
+/// (a duplicate surfaces as 409 through the unique constraint).
+pub async fn create_user<C: ConnectionTrait>(
     conn: &C,
-    email: &str,
+    email: Option<&str>,
     first_name: &str,
     last_name: &str,
 ) -> Result<users::Model, AppError> {
-    let email = normalize_email(email);
-    validate_email(&email)?;
+    let email = match email.map(str::trim).filter(|e| !e.is_empty()) {
+        Some(raw) => {
+            let email = normalize_email(raw);
+            validate_email(&email)?;
+            Some(email)
+        }
+        None => None,
+    };
     let first_name = first_name.trim();
-    if first_name.is_empty() {
-        return Err(AppError::Validation("first name is required".to_string()));
+    let last_name = last_name.trim();
+    if first_name.is_empty() || last_name.is_empty() {
+        return Err(AppError::Validation(
+            "first and last names are required".to_string(),
+        ));
+    }
+    if first_name.len() > 100 || last_name.len() > 100 {
+        return Err(AppError::Validation("name too long".to_string()));
     }
     let created = now();
     Ok(users::ActiveModel {
         id: Set(Uuid::now_v7()),
         email: Set(email),
         first_name: Set(first_name.to_string()),
-        last_name: Set(last_name.trim().to_string()),
+        last_name: Set(last_name.to_string()),
         status: Set(users::STATUS_ACTIVE.to_string()),
         is_global_admin: Set(false),
+        activated_at: Set(None),
+        email_verified_at: Set(None),
         created_at: Set(created),
         updated_at: Set(created),
     }
@@ -86,16 +118,28 @@ pub async fn create_active_user<C: ConnectionTrait>(
     .await?)
 }
 
-pub async fn activate_if_invited<C: ConnectionTrait>(
+/// Records a successful login: sets `activated_at` on the first one and,
+/// when the login proved the mailbox (magic link), `email_verified_at`.
+/// No write when nothing changes.
+pub async fn record_login<C: ConnectionTrait>(
     conn: &C,
     user: users::Model,
+    email_proven: bool,
 ) -> Result<users::Model, AppError> {
-    if user.status != users::STATUS_INVITED {
+    let set_activated = user.activated_at.is_none();
+    let set_verified = email_proven && user.email.is_some() && user.email_verified_at.is_none();
+    if !set_activated && !set_verified {
         return Ok(user);
     }
+    let at = now();
     let mut active: users::ActiveModel = user.into();
-    active.status = Set(users::STATUS_ACTIVE.to_string());
-    active.updated_at = Set(now());
+    if set_activated {
+        active.activated_at = Set(Some(at));
+    }
+    if set_verified {
+        active.email_verified_at = Set(Some(at));
+    }
+    active.updated_at = Set(at);
     Ok(active.update(conn).await?)
 }
 
@@ -111,8 +155,8 @@ pub async fn set_global_admin<C: ConnectionTrait>(
 }
 
 /// Self-service identity fix: first/last name only (bootstrap admins are
-/// created with a name derived from their email, and invitation typos
-/// happen — the person is the authority on their own name).
+/// created with a name derived from their email, and admin typos happen —
+/// the person is the authority on their own name).
 pub async fn update_names<C: ConnectionTrait>(
     conn: &C,
     user: users::Model,
@@ -136,8 +180,7 @@ pub async fn update_names<C: ConnectionTrait>(
     Ok(active.update(conn).await?)
 }
 
-/// Platform-level enable/disable. `invited` is a lifecycle state owned by the
-/// invitation flow and cannot be set through here.
+/// Platform-level enable/disable.
 pub async fn set_status<C: ConnectionTrait>(
     conn: &C,
     user: users::Model,

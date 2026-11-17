@@ -9,8 +9,9 @@ use crate::competencies::handlers::{
     documents as comp_documents, me as me_competencies, member as member_competencies,
     referential as comp_referential,
 };
-use crate::identity::handlers::{auth, me as me_password};
-use crate::tenancy::handlers::{clubs, me, platform, public_invitations};
+use crate::identity::handlers::{auth, me as me_identity};
+use crate::onboarding::handlers::{members as intake, platform as platform_intake};
+use crate::tenancy::handlers::{clubs, me, platform};
 use crate::users::handlers::{
     catalog as users_catalog, me as me_profile, member as member_profile,
 };
@@ -23,25 +24,14 @@ const DOCUMENT_UPLOAD_BODY_LIMIT: usize = 8 * 1024 * 1024;
 pub fn build_router(state: AppState) -> Router {
     let api = Router::new()
         // Public authentication endpoints.
-        .route("/auth/login-methods", post(auth::login_methods))
         .route("/auth/magic-link", post(auth::request_magic_link))
         .route("/auth/magic-link/consume", post(auth::consume_magic_link))
-        .route("/auth/login", post(auth::login_password))
-        .route(
-            "/auth/invitations/{token}",
-            get(public_invitations::preview),
-        )
-        .route(
-            "/auth/invitations/{token}/accept",
-            post(public_invitations::accept),
-        )
         // Authenticated session management.
         .route("/auth/logout", post(auth::logout))
         .route("/auth/logout-all", post(auth::logout_all))
         .route("/auth/stop-impersonation", post(auth::stop_impersonation))
         .route("/me", get(me::get_me))
-        .route("/me/password", put(me_password::set_my_password))
-        .route("/me/identity", put(me_password::set_my_identity))
+        .route("/me/identity", put(me_identity::set_my_identity))
         // Self-service diving profile (user-global, no club in the URL).
         // Certifications are staff-entered only (product decision
         // 2026-08-18): no /me/certifications endpoints.
@@ -71,8 +61,8 @@ pub fn build_router(state: AppState) -> Router {
         )
         .route("/platform/clubs/{club_id}", put(platform::update_club))
         .route(
-            "/platform/clubs/{club_id}/invitations",
-            post(platform::invite_club_admin),
+            "/platform/clubs/{club_id}/admins",
+            post(platform_intake::add_club_admin),
         )
         .route(
             "/platform/global-admins",
@@ -100,27 +90,9 @@ pub fn build_router(state: AppState) -> Router {
             "/clubs/{club_slug}/roles/{role_id}/permissions",
             put(clubs::set_role_permissions),
         )
-        // Reading the members list goes through /members (users module,
-        // badges included); this route only writes memberships.
-        .route(
-            "/clubs/{club_slug}/memberships",
-            post(clubs::add_membership),
-        )
         .route(
             "/clubs/{club_slug}/memberships/{membership_id}",
             put(clubs::update_membership),
-        )
-        .route(
-            "/clubs/{club_slug}/invitations",
-            get(clubs::list_invitations).post(clubs::create_invitation),
-        )
-        .route(
-            "/clubs/{club_slug}/invitations/{invitation_id}/resend",
-            post(clubs::resend_invitation),
-        )
-        .route(
-            "/clubs/{club_slug}/invitations/{invitation_id}",
-            delete(clubs::revoke_invitation),
         )
         .route("/clubs/{club_slug}/impersonate", post(clubs::impersonate))
         .route("/clubs/{club_slug}/audit-log", get(clubs::audit_log))
@@ -128,7 +100,8 @@ pub fn build_router(state: AppState) -> Router {
         // member of the club — enforced inside the handlers).
         .route(
             "/clubs/{club_slug}/members",
-            get(member_profile::list_members),
+            // Listing: users module (badges); adding: onboarding (ADR-0009).
+            get(member_profile::list_members).post(intake::add_member),
         )
         .route(
             "/clubs/{club_slug}/members/{user_id}/profile",

@@ -7,9 +7,9 @@ describe("translateApiError", () => {
   it("translates known backend messages to French", () => {
     expect(
       translateApiError(
-        new ApiError(422, "validation", "password must be between 8 and 128 characters"),
+        new ApiError(409, "conflict", "this person is already a member of the club"),
       ),
-    ).toBe("Le mot de passe doit contenir entre 8 et 128 caractères.");
+    ).toBe("Cette personne est déjà membre du club.");
     expect(
       translateApiError(
         new ApiError(422, "validation", "cannot remove the club's last administrator"),

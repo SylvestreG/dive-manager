@@ -84,21 +84,22 @@ function CreateClubForm() {
   );
 }
 
-function InviteAdminForm({ club }: { club: ClubDto }) {
+/** ADR-0009: creates (or reuses) the account and sends a welcome email. */
+function AddClubAdminForm({ club }: { club: ClubDto }) {
   const [person, setPerson] = useState(EMPTY_PERSON);
   const feedback = useFeedback();
   const invite = useMutation({
     meta: { inlineError: true },
-    mutationFn: () => api.platform.inviteClubAdmin(club.id, person),
+    mutationFn: () => api.platform.addClubAdmin(club.id, person),
     onSuccess: () => {
-      feedback.ok(t.club.invitations.sent);
+      feedback.ok(t.platform.clubAdminAdded);
       setPerson(EMPTY_PERSON);
     },
     onError: feedback.fail,
   });
   return (
     <div className="mt-3 flex flex-col gap-3 border-t border-hairline pt-3">
-      <div className="text-sm font-semibold">{t.platform.inviteAdmin}</div>
+      <div className="text-sm font-semibold">{t.platform.addClubAdmin}</div>
       <PersonFields value={person} onChange={setPerson} />
       <Button
         variant="secondary"
@@ -148,7 +149,7 @@ function ClubRow({ club }: { club: ClubDto }) {
             onClick={() => setShowInvite((v) => !v)}
             disabled={suspended}
           >
-            {t.platform.inviteAdmin}
+            {t.platform.addClubAdmin}
           </Button>
           <Button
             variant={suspended ? "secondary" : "danger"}
@@ -159,7 +160,7 @@ function ClubRow({ club }: { club: ClubDto }) {
           </Button>
         </div>
       </div>
-      {showInvite && !suspended && <InviteAdminForm club={club} />}
+      {showInvite && !suspended && <AddClubAdminForm club={club} />}
     </Card>
   );
 }

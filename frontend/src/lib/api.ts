@@ -46,11 +46,9 @@ async function request<T>(
   }
 
   // A 401 means "invalid session" ONLY on authenticated endpoints. Public
-  // auth endpoints also answer 401 (wrong password, expired link) and must
+  // auth endpoints also answer 401 (expired link) and must
   // not purge a legitimate session state.
   const isPublicAuthPath =
-    path === "/auth/login" ||
-    path === "/auth/login-methods" ||
     path === "/auth/magic-link" ||
     path === "/auth/magic-link/consume";
   if (response.status === 401 && !isPublicAuthPath) {
@@ -99,7 +97,8 @@ async function requestBlob(path: string): Promise<Blob | null> {
 
 export interface UserDto {
   id: string;
-  email: string;
+  /** Optional since ADR-0009 (members imported without an address). */
+  email: string | null;
   first_name: string;
   last_name: string;
   is_global_admin: boolean;
@@ -120,8 +119,6 @@ export interface MeResponse {
   user: UserDto;
   impersonating: boolean;
   real_user?: UserDto;
-  /** Whether the REAL user has a password credential. */
-  has_password: boolean;
   memberships: MeMembership[];
 }
 export interface Page<T> {
@@ -158,22 +155,41 @@ export interface RoleDto {
   is_admin: boolean;
   permissions: string[];
 }
-export interface InvitationDto {
-  id: string;
-  email: string;
+/** Member intake (POST /clubs/{slug}/members) — ADR-0009. */
+export interface NewMember {
   first_name: string;
   last_name: string;
-  role_id: string | null;
-  expires_at: string;
-  created_at: string;
+  email?: string;
+  birthdate?: string;
+  phone?: string;
+  licence_number?: string;
+  role_id: string;
+  send_welcome?: boolean;
+  /** Confirms a previous "check" outcome (email known, names differ). */
+  confirm_existing?: boolean;
 }
-export interface InvitationPreview {
-  email: string;
+/** A stored value that differs from what was entered (never overwritten).
+ * Values are null when the caller may not view member data. */
+export interface FieldDiff {
+  field: "name" | "birthdate" | "phone" | "licence_number";
+  stored: string | null;
+  incoming: string | null;
+}
+export interface IntakeUser {
+  id: string;
+  email: string | null;
   first_name: string;
   last_name: string;
-  club_name: string | null;
-  role_name: string | null;
-  expires_at: string;
+}
+export interface AddMemberResult {
+  user: IntakeUser;
+  /** Null for "check": nothing was written. */
+  membership_id: string | null;
+  role_id: string;
+  role_name: string;
+  is_admin: boolean;
+  outcome: "created" | "added_existing" | "check";
+  diffs: FieldDiff[];
 }
 export interface ModuleDto {
   module: string;
@@ -410,21 +426,15 @@ export interface CascadeImpact {
 // ---------- endpoints ----------
 
 export const api = {
-  loginMethods: (email: string) =>
-    request<{ password: boolean }>("POST", "/auth/login-methods", { email }),
   requestMagicLink: (email: string) =>
     request<{ message: string }>("POST", "/auth/magic-link", { email }),
   consumeMagicLink: (token: string) =>
     request<SessionResponse>("POST", "/auth/magic-link/consume", { token }),
-  loginPassword: (email: string, password: string) =>
-    request<SessionResponse>("POST", "/auth/login", { email, password }),
   logout: () => request<unknown>("POST", "/auth/logout"),
   logoutAll: () => request<unknown>("POST", "/auth/logout-all"),
   stopImpersonation: () =>
     request<SessionResponse>("POST", "/auth/stop-impersonation"),
   me: () => request<MeResponse>("GET", "/me"),
-  setMyPassword: (password: string) =>
-    request<unknown>("PUT", "/me/password", { password }),
   // Own first/last name (bootstrap accounts start with an email-derived
   // name; it also feeds the licence-import identity binding).
   updateMyIdentity: (firstName: string, lastName: string) =>
@@ -447,13 +457,6 @@ export const api = {
   putMyStamp: (imageBase64: string) =>
     request<unknown>("PUT", "/me/stamp", { image_base64: imageBase64 }),
   deleteMyStamp: () => request<unknown>("DELETE", "/me/stamp"),
-
-  previewInvitation: (token: string) =>
-    request<InvitationPreview>("GET", `/auth/invitations/${token}`),
-  acceptInvitation: (token: string, password?: string) =>
-    request<SessionResponse>("POST", `/auth/invitations/${token}/accept`, {
-      password: password || undefined,
-    }),
 
   // Global competency referential (platform-global tree; validations follow
   // the user across clubs — product decision 2026-08-19).
@@ -568,11 +571,11 @@ export const api = {
       request<ClubDto>("POST", "/platform/clubs", { name, slug }),
     updateClub: (clubId: string, patch: { name?: string; status?: string }) =>
       request<ClubDto>("PUT", `/platform/clubs/${clubId}`, patch),
-    inviteClubAdmin: (
+    addClubAdmin: (
       clubId: string,
-      invitee: { email: string; first_name: string; last_name: string },
+      person: { email: string; first_name: string; last_name: string },
     ) =>
-      request<unknown>("POST", `/platform/clubs/${clubId}/invitations`, invitee),
+      request<AddMemberResult>("POST", `/platform/clubs/${clubId}/admins`, person),
     listGlobalAdmins: () =>
       request<UserDto[]>("GET", "/platform/global-admins"),
     addGlobalAdmin: (invitee: {
@@ -588,34 +591,14 @@ export const api = {
 
   club: (slug: string) => ({
     context: () => request<ClubContext>("GET", `/clubs/${slug}`),
-    addMember: (email: string, roleId: string) =>
-      request<MembershipDto>("POST", `/clubs/${slug}/memberships`, {
-        email,
-        role_id: roleId,
-      }),
+    // ADR-0009: creates the account, or adds the one matching the email.
+    addMember: (member: NewMember) =>
+      request<AddMemberResult>("POST", `/clubs/${slug}/members`, member),
     updateMembership: (
       membershipId: string,
       patch: { role_id?: string; status?: string },
     ) =>
       request<unknown>("PUT", `/clubs/${slug}/memberships/${membershipId}`, patch),
-    invitations: (page = 1) =>
-      request<Page<InvitationDto>>(
-        "GET",
-        `/clubs/${slug}/invitations?page=${page}`,
-      ),
-    createInvitation: (invitee: {
-      email: string;
-      first_name: string;
-      last_name: string;
-      role_id: string;
-    }) => request<InvitationDto>("POST", `/clubs/${slug}/invitations`, invitee),
-    resendInvitation: (invitationId: string) =>
-      request<InvitationDto>(
-        "POST",
-        `/clubs/${slug}/invitations/${invitationId}/resend`,
-      ),
-    revokeInvitation: (invitationId: string) =>
-      request<unknown>("DELETE", `/clubs/${slug}/invitations/${invitationId}`),
     roles: () => request<RoleDto[]>("GET", `/clubs/${slug}/roles`),
     setRolePermissions: (roleId: string, permissions: string[]) =>
       request<unknown>("PUT", `/clubs/${slug}/roles/${roleId}/permissions`, {

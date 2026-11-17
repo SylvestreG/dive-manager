@@ -562,9 +562,9 @@ async fn members_list_is_paginated() {
     ctx.app
         .request(
             Method::POST,
-            "/api/v1/clubs/flow-i/memberships",
+            "/api/v1/clubs/flow-i/members",
             Some(&ctx.admin_token),
-            Some(json!({ "email": "third@example.com", "role_id": member_role })),
+            Some(json!({ "first_name": "Test", "last_name": "User", "email": "third@example.com", "role_id": member_role })),
         )
         .await;
     let _ = extra;
@@ -714,9 +714,9 @@ async fn instructor_number_requires_a_teaching_grade() {
     ctx.app
         .request(
             Method::POST,
-            "/api/v1/clubs/flow-j/memberships",
+            "/api/v1/clubs/flow-j/members",
             Some(&ctx.admin_token),
-            Some(json!({ "email": "second@example.com", "role_id": member_role })),
+            Some(json!({ "first_name": "Test", "last_name": "User", "email": "second@example.com", "role_id": member_role })),
         )
         .await;
     ctx.app

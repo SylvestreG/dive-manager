@@ -34,7 +34,6 @@ pub struct MeResponse {
     pub real_user: Option<UserDto>,
     /// Whether the REAL user has a password credential (the profile's
     /// password form always targets the real user).
-    pub has_password: bool,
     pub memberships: Vec<MeMembershipDto>,
 }
 
@@ -96,16 +95,12 @@ pub async fn get_me(
         });
     }
 
-    let has_password =
-        crate::identity::services::login::user_has_password(&state.db, auth.real_user.id).await?;
-
     Ok(Json(MeResponse {
         user: UserDto::from(&auth.effective_user),
         impersonating: auth.is_impersonating(),
         real_user: auth
             .is_impersonating()
             .then(|| UserDto::from(&auth.real_user)),
-        has_password,
         memberships: memberships_dto,
     }))
 }

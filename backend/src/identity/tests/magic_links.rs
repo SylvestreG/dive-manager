@@ -3,7 +3,6 @@ use sea_orm::*;
 use serde_json::json;
 
 use crate::identity::entities::{login_magic_links, prelude::*};
-use crate::identity::services::login;
 use crate::test_support::TestApp;
 
 #[tokio::test]
@@ -33,7 +32,14 @@ async fn magic_link_flow_activates_and_is_single_use() {
     assert_eq!(status, StatusCode::OK);
     let session_token = body["token"].as_str().unwrap().to_string();
 
-    // The invited user is now active and /me works.
+    // First login recorded, mailbox proven, and /me works.
+    let stored = Users::find_by_id(user.id)
+        .one(&app.state.db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(stored.activated_at.is_some());
+    assert!(stored.email_verified_at.is_some());
     let (status, me) = app
         .request(Method::GET, "/api/v1/me", Some(&session_token), None)
         .await;
@@ -53,12 +59,9 @@ async fn magic_link_flow_activates_and_is_single_use() {
 }
 
 #[tokio::test]
-async fn magic_link_newer_request_and_login_invalidate_pending_links() {
+async fn magic_link_newer_request_invalidates_pending_link() {
     let app = TestApp::new().await;
-    let user = app.create_user("diver@example.com", true, false).await;
-    login::set_password(&app.state.db, user.id, "s3cret-password")
-        .await
-        .unwrap();
+    app.create_user("diver@example.com", true, false).await;
 
     // Older link dies when a newer one is requested.
     let post = |email: &'static str| {
@@ -84,16 +87,7 @@ async fn magic_link_newer_request_and_login_invalidate_pending_links() {
         .await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 
-    // A successful login by any method invalidates the pending link.
-    let (status, _) = app
-        .request(
-            Method::POST,
-            "/api/v1/auth/login",
-            None,
-            Some(json!({ "email": "diver@example.com", "password": "s3cret-password" })),
-        )
-        .await;
-    assert_eq!(status, StatusCode::OK);
+    // The surviving link logs in once.
     let (status, _) = app
         .request(
             Method::POST,
@@ -102,7 +96,7 @@ async fn magic_link_newer_request_and_login_invalidate_pending_links() {
             Some(json!({ "token": second })),
         )
         .await;
-    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(status, StatusCode::OK);
 }
 
 #[tokio::test]

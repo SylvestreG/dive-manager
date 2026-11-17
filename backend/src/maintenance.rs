@@ -5,7 +5,6 @@ use sea_orm::*;
 
 use crate::identity::entities::{auth_sessions, login_magic_links, prelude::*};
 use crate::now;
-use crate::tenancy::entities::{invitations, prelude::Invitations};
 
 /// Hourly in-process cleanup of expired secrets — no external job runner
 /// (charter: no infrastructure without a demonstrated need).
@@ -35,11 +34,6 @@ async fn cleanup_once(db: &DatabaseConnection) -> Result<(), DbErr> {
                 .add(auth_sessions::Column::ExpiresAt.lt(current - Duration::days(30)))
                 .add(auth_sessions::Column::RevokedAt.lt(current - Duration::days(30))),
         )
-        .exec(db)
-        .await?;
-
-    Invitations::delete_many()
-        .filter(invitations::Column::ExpiresAt.lt(current - Duration::days(90)))
         .exec(db)
         .await?;
 

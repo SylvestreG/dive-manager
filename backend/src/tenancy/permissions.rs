@@ -9,7 +9,7 @@ pub enum Permission {
     ClubMembersView,
     ClubMembersManage,
     ClubRolesManage,
-    ClubInvitationsManage,
+    ClubIntakeManage,
     ClubImpersonate,
 }
 
@@ -19,7 +19,7 @@ impl Permission {
         Permission::ClubMembersView,
         Permission::ClubMembersManage,
         Permission::ClubRolesManage,
-        Permission::ClubInvitationsManage,
+        Permission::ClubIntakeManage,
         Permission::ClubImpersonate,
     ];
 
@@ -29,7 +29,7 @@ impl Permission {
             Permission::ClubMembersView => "club.members.view",
             Permission::ClubMembersManage => "club.members.manage",
             Permission::ClubRolesManage => "club.roles.manage",
-            Permission::ClubInvitationsManage => "club.invitations.manage",
+            Permission::ClubIntakeManage => "club.intake.manage",
             Permission::ClubImpersonate => "club.impersonate",
         }
     }
