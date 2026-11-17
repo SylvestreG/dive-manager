@@ -2,13 +2,17 @@
 //! navigations: they always answer with a redirect to a frontend page,
 //! never with JSON — errors become `/login?error=…`.
 
+use std::time::Duration as StdDuration;
+
 use axum::extract::{Path, Query, State};
-use axum::http::HeaderMap;
-use axum::response::Redirect;
+use axum::http::{header, HeaderMap, HeaderValue};
+use axum::response::{AppendHeaders, IntoResponse, Redirect, Response};
 use axum::{Form, Json};
 use serde::{Deserialize, Serialize};
 
+use crate::config::Config;
 use crate::errors::AppError;
+use crate::identity::extractors::ClientIp;
 use crate::identity::handlers::auth::device_label;
 use crate::identity::handlers::{SessionResponse, UserDto};
 use crate::identity::services::oidc::{self, CallbackOutcome, Provider};
@@ -37,16 +41,94 @@ fn frontend(state: &AppState, path: &str) -> Redirect {
     Redirect::to(&format!("{}{path}", state.config.base_url))
 }
 
-/// GET /auth/oidc/{provider}/start → 302 to the provider.
-pub async fn start(State(state): State<AppState>, Path(provider): Path<String>) -> Redirect {
+// ---------- browser binding cookie ----------
+//
+// Set when a flow starts, required at the callback AND at the code
+// exchange: a flow can only be finished by the browser that started it
+// (no login CSRF, no link flow completed by a victim). SameSite=None so it
+// also accompanies Apple's cross-site form_post callback; it authenticates
+// nothing by itself (a random value whose hash is bound to one flow).
+
+fn secure(config: &Config) -> bool {
+    config.base_url.starts_with("https://")
+}
+
+fn cookie_name(config: &Config) -> &'static str {
+    if secure(config) {
+        "__Host-dm_oidc"
+    } else {
+        "dm_oidc"
+    }
+}
+
+fn cookie_attributes(config: &Config) -> &'static str {
+    if secure(config) {
+        "Path=/; HttpOnly; Secure; SameSite=None"
+    } else {
+        // Plain-http dev: SameSite=None requires Secure.
+        "Path=/; HttpOnly; SameSite=Lax"
+    }
+}
+
+pub(crate) fn set_binding_cookie(config: &Config, value: &str) -> HeaderValue {
+    HeaderValue::from_str(&format!(
+        "{}={value}; Max-Age=600; {}",
+        cookie_name(config),
+        cookie_attributes(config)
+    ))
+    .expect("cookie header")
+}
+
+fn clear_binding_cookie(config: &Config) -> HeaderValue {
+    HeaderValue::from_str(&format!(
+        "{}=; Max-Age=0; {}",
+        cookie_name(config),
+        cookie_attributes(config)
+    ))
+    .expect("cookie header")
+}
+
+fn read_binding(config: &Config, headers: &HeaderMap) -> Option<String> {
+    let name = cookie_name(config);
+    headers
+        .get_all(header::COOKIE)
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .flat_map(|v| v.split(';'))
+        .filter_map(|pair| pair.trim().split_once('='))
+        .find(|(key, _)| *key == name)
+        .map(|(_, value)| value.to_string())
+}
+
+/// GET /auth/oidc/{provider}/start → 303 to the provider, setting the
+/// browser-binding cookie. Rate limited per IP (design §11).
+pub async fn start(
+    State(state): State<AppState>,
+    ClientIp(ip): ClientIp,
+    Path(provider): Path<String>,
+) -> Response {
     let Some(provider) = Provider::parse(&provider) else {
-        return frontend(&state, "/login?error=sso");
+        return frontend(&state, "/login?error=sso").into_response();
     };
+    if !state.rate.check(
+        &format!("oidc-start:{ip}"),
+        30,
+        StdDuration::from_secs(15 * 60),
+    ) {
+        return frontend(&state, "/login?error=rate_limited").into_response();
+    }
     match oidc::start(&state, provider, None).await {
-        Ok(url) => Redirect::to(&url),
+        Ok(flow) => (
+            AppendHeaders([(
+                header::SET_COOKIE,
+                set_binding_cookie(&state.config, &flow.browser_binding),
+            )]),
+            Redirect::to(&flow.authorize_url),
+        )
+            .into_response(),
         Err(error) => {
             tracing::warn!(?error, "OIDC start failed");
-            frontend(&state, "/login?error=sso")
+            frontend(&state, "/login?error=sso").into_response()
         }
     }
 }
@@ -64,33 +146,46 @@ async fn finish(
     provider: String,
     params: CallbackParams,
     headers: HeaderMap,
-) -> Redirect {
+) -> Response {
+    let clear = AppendHeaders([(header::SET_COOKIE, clear_binding_cookie(&state.config))]);
     let Some(provider) = Provider::parse(&provider) else {
-        return frontend(&state, "/login?error=sso");
+        return (clear, frontend(&state, "/login?error=sso")).into_response();
     };
     if params.error.is_some() {
-        return frontend(&state, "/login?error=sso_cancelled");
+        return (clear, frontend(&state, "/login?error=sso_cancelled")).into_response();
     }
     let (Some(code), Some(flow_state)) = (params.code, params.state) else {
-        return frontend(&state, "/login?error=sso");
+        return (clear, frontend(&state, "/login?error=sso")).into_response();
     };
-    let outcome =
-        match oidc::callback(&state, provider, &code, &flow_state, device_label(&headers)).await {
-            Ok(outcome) => outcome,
-            Err(error) => {
-                tracing::warn!(?error, provider = provider.as_str(), "OIDC callback failed");
-                CallbackOutcome::Failed
-            }
-        };
+    let binding = read_binding(&state.config, &headers);
+    let outcome = match oidc::callback(
+        &state,
+        provider,
+        &code,
+        &flow_state,
+        binding.as_deref(),
+        device_label(&headers),
+    )
+    .await
+    {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            tracing::warn!(?error, provider = provider.as_str(), "OIDC callback failed");
+            CallbackOutcome::Failed
+        }
+    };
     let path = match outcome {
-        CallbackOutcome::LoggedIn { exchange_code } => format!("/auth/done?code={exchange_code}"),
+        CallbackOutcome::LoggedIn { exchange_code } => {
+            // Keep the binding cookie: the exchange needs it (then clears it).
+            return frontend(&state, &format!("/auth/done?code={exchange_code}")).into_response();
+        }
         CallbackOutcome::ConfirmationSent => "/auth/check-email".to_string(),
         CallbackOutcome::UnknownAccount => "/auth/unknown".to_string(),
         CallbackOutcome::Linked => format!("/profile?linked={}", provider.as_str()),
         CallbackOutcome::AlreadyUsed => "/profile?link_error=already_used".to_string(),
         CallbackOutcome::Failed => "/login?error=sso".to_string(),
     };
-    frontend(&state, &path)
+    (clear, frontend(&state, &path)).into_response()
 }
 
 /// GET callback (Google, Microsoft).
@@ -99,7 +194,7 @@ pub async fn callback_get(
     Path(provider): Path<String>,
     headers: HeaderMap,
     Query(params): Query<CallbackParams>,
-) -> Redirect {
+) -> Response {
     finish(state, provider, params, headers).await
 }
 
@@ -109,7 +204,7 @@ pub async fn callback_post(
     Path(provider): Path<String>,
     headers: HeaderMap,
     Form(params): Form<CallbackParams>,
-) -> Redirect {
+) -> Response {
     finish(state, provider, params, headers).await
 }
 
@@ -118,15 +213,22 @@ pub struct ExchangeRequest {
     pub code: String,
 }
 
-/// POST /auth/exchange — one-time code → session (the code reached the page
-/// through a redirect URL; the session token never does).
+/// POST /auth/exchange — one-time code → session, only from the browser
+/// that started the flow (binding cookie). The session token never travels
+/// in a URL.
 pub async fn exchange(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(body): Json<ExchangeRequest>,
-) -> Result<Json<SessionResponse>, AppError> {
-    let (token, user) = oidc::exchange(&state, &body.code).await?;
-    Ok(Json(SessionResponse {
-        token,
-        user: UserDto::from(&user),
-    }))
+) -> Result<Response, AppError> {
+    let binding = read_binding(&state.config, &headers);
+    let (token, user) = oidc::exchange(&state, &body.code, binding.as_deref()).await?;
+    Ok((
+        AppendHeaders([(header::SET_COOKIE, clear_binding_cookie(&state.config))]),
+        Json(SessionResponse {
+            token,
+            user: UserDto::from(&user),
+        }),
+    )
+        .into_response())
 }

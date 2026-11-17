@@ -261,15 +261,24 @@ fn pkce_challenge(verifier: &str) -> String {
     URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()))
 }
 
-/// Starts a flow and returns the provider authorization URL. `link_user`
-/// binds a `link` flow to the logged-in user who started it.
+/// A started flow: where to send the browser, and the random value of the
+/// browser-binding cookie to set on it (only its hash is stored).
+pub struct StartedFlow {
+    pub authorize_url: String,
+    pub browser_binding: String,
+}
+
+/// Starts a flow. `link_user` binds a `link` flow to the logged-in user who
+/// started it; the browser binding ties the flow to THIS browser, so nobody
+/// can finish it elsewhere (login CSRF, identity planting).
 pub async fn start(
     state: &AppState,
     provider: Provider,
     link_user: Option<Uuid>,
-) -> Result<String, AppError> {
+) -> Result<StartedFlow, AppError> {
     let spec = spec(&state.config, provider)?;
     let state_token = tokens::generate();
+    let browser = tokens::generate();
     let nonce = random_b64(24);
     let verifier = random_b64(32);
     let created = now();
@@ -277,6 +286,7 @@ pub async fn start(
         id: Set(Uuid::now_v7()),
         state_hash: Set(state_token.hash),
         provider: Set(provider.as_str().to_string()),
+        browser_hash: Set(browser.hash),
         client: Set(oidc_flows::CLIENT_WEB.to_string()),
         purpose: Set(match link_user {
             Some(_) => oidc_flows::PURPOSE_LINK,
@@ -320,7 +330,10 @@ pub async fn start(
             tracing::error!(error = %e, "invalid authorize_url");
             AppError::Internal
         })?;
-    Ok(url.to_string())
+    Ok(StartedFlow {
+        authorize_url: url.to_string(),
+        browser_binding: browser.token,
+    })
 }
 
 /// Verified identity asserted by the provider.
@@ -416,10 +429,14 @@ async fn take_flow(
     state: &AppState,
     provider: Provider,
     state_param: &str,
+    browser_binding: Option<&str>,
 ) -> Result<oidc_flows::Model, AppError> {
     let invalid = || AppError::Unauthorized("invalid or expired login attempt".to_string());
+    // Finished in another browser (no / wrong binding cookie) = refused.
+    let browser_hash = tokens::hash(browser_binding.ok_or_else(invalid)?);
     let flow = OidcFlows::find()
         .filter(oidc_flows::Column::StateHash.eq(tokens::hash(state_param)))
+        .filter(oidc_flows::Column::BrowserHash.eq(browser_hash))
         .filter(oidc_flows::Column::Provider.eq(provider.as_str()))
         .filter(oidc_flows::Column::ConsumedAt.is_null())
         .filter(oidc_flows::Column::ExpiresAt.gt(now()))
@@ -562,10 +579,11 @@ pub async fn callback(
     provider: Provider,
     code: &str,
     state_param: &str,
+    browser_binding: Option<&str>,
     client_label: Option<String>,
 ) -> Result<CallbackOutcome, AppError> {
     let spec = spec(&state.config, provider)?;
-    let flow = take_flow(state, provider, state_param).await?;
+    let flow = take_flow(state, provider, state_param, browser_binding).await?;
     let identity = verify_code(state, &spec, &flow, code).await?;
 
     if flow.purpose == oidc_flows::PURPOSE_LINK {
@@ -581,7 +599,8 @@ pub async fn callback(
             return Ok(CallbackOutcome::Failed);
         }
         touch_identity(&txn, linked).await?;
-        let code = issue_exchange_code(&txn, user.id, client_label).await?;
+        let code =
+            issue_exchange_code(&txn, user.id, client_label, flow.browser_hash.clone()).await?;
         txn.commit().await?;
         return Ok(CallbackOutcome::LoggedIn {
             exchange_code: code,
@@ -616,7 +635,8 @@ pub async fn callback(
             json!({ "provider": provider.as_str() }),
         )
         .await?;
-        let code = issue_exchange_code(&txn, user.id, client_label).await?;
+        let code =
+            issue_exchange_code(&txn, user.id, client_label, flow.browser_hash.clone()).await?;
         txn.commit().await?;
         return Ok(CallbackOutcome::LoggedIn {
             exchange_code: code,
@@ -718,12 +738,14 @@ async fn issue_exchange_code<C: ConnectionTrait>(
     conn: &C,
     user_id: Uuid,
     client_label: Option<String>,
+    browser_hash: Vec<u8>,
 ) -> Result<String, AppError> {
     let code = tokens::generate();
     exchange_codes::ActiveModel {
         code_hash: Set(code.hash),
         user_id: Set(user_id),
         client_label: Set(client_label),
+        browser_hash: Set(browser_hash),
         expires_at: Set(now() + Duration::seconds(EXCHANGE_TTL_SECONDS)),
         consumed_at: Set(None),
     }
@@ -732,14 +754,21 @@ async fn issue_exchange_code<C: ConnectionTrait>(
     Ok(code.token)
 }
 
-/// Trades a one-time exchange code for a session (single use, 60 s).
-pub async fn exchange(state: &AppState, code: &str) -> Result<(String, users::Model), AppError> {
+/// Trades a one-time exchange code for a session (single use, 60 s, and
+/// only from the browser that started the flow).
+pub async fn exchange(
+    state: &AppState,
+    code: &str,
+    browser_binding: Option<&str>,
+) -> Result<(String, users::Model), AppError> {
     let invalid = || AppError::Unauthorized("invalid or expired login code".to_string());
     let hash = tokens::hash(code);
+    let browser_hash = tokens::hash(browser_binding.ok_or_else(invalid)?);
     let txn = state.db.begin().await?;
     let consumed = ExchangeCodes::update_many()
         .col_expr(exchange_codes::Column::ConsumedAt, Expr::value(Some(now())))
         .filter(exchange_codes::Column::CodeHash.eq(hash.clone()))
+        .filter(exchange_codes::Column::BrowserHash.eq(browser_hash))
         .filter(exchange_codes::Column::ConsumedAt.is_null())
         .filter(exchange_codes::Column::ExpiresAt.gt(now()))
         .exec(&txn)
@@ -774,7 +803,9 @@ async fn send_link_confirmation(
         return Ok(());
     };
     if !state.rate.check(
-        &format!("ml:email:{to}"),
+        // Own counter: provider-triggered confirmations must not consume
+        // the account holder's magic-link quota.
+        &format!("link-confirm:{to}"),
         3,
         StdDuration::from_secs(15 * 60),
     ) {
@@ -881,7 +912,10 @@ pub async fn unlink(state: &AppState, user_id: Uuid, identity_id: Uuid) -> Resul
         .find(|i| i.id == identity_id)
         .cloned()
         .ok_or_else(|| AppError::NotFound("login method not found".to_string()))?;
-    if user.email.is_none() && identities.len() == 1 {
+    // An admin-typed email is not a login method until proven (R11): a
+    // typo must not leave the account to whoever owns that mailbox.
+    let email_login = user.email.is_some() && user.email_verified_at.is_some();
+    if !email_login && identities.len() == 1 {
         return Err(AppError::Conflict(
             "cannot remove your last login method".to_string(),
         ));

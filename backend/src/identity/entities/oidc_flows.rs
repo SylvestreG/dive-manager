@@ -8,6 +8,7 @@ pub struct Model {
     pub id: Uuid,
     pub state_hash: Vec<u8>,
     pub provider: String,
+    pub browser_hash: Vec<u8>,
     pub client: String,
     pub purpose: String,
     pub nonce: String,

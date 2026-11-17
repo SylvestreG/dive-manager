@@ -9,6 +9,7 @@ pub struct Model {
     pub code_hash: Vec<u8>,
     pub user_id: Uuid,
     pub client_label: Option<String>,
+    pub browser_hash: Vec<u8>,
     pub expires_at: DateTimeWithTimeZone,
     pub consumed_at: Option<DateTimeWithTimeZone>,
 }

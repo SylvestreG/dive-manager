@@ -48,6 +48,7 @@ export const t = {
     errors: {
       sso: "La connexion n'a pas abouti. Réessayez ou utilisez le lien par email.",
       sso_cancelled: "Connexion annulée.",
+      rate_limited: "Trop de tentatives, réessayez dans quelques minutes.",
     } as Record<string, string>,
     privacy: "Confidentialité",
     tooManyAttempts: "Trop de tentatives, réessayez dans quelques minutes.",

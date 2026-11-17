@@ -3,6 +3,8 @@
 //! user's credentials.
 
 use axum::extract::{Path, State};
+use axum::http::header;
+use axum::response::{AppendHeaders, IntoResponse, Response};
 use axum::Json;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -10,6 +12,7 @@ use uuid::Uuid;
 
 use crate::errors::AppError;
 use crate::identity::extractors::CurrentUser;
+use crate::identity::handlers::oidc::set_binding_cookie;
 use crate::identity::services::login;
 use crate::identity::services::oidc::{self, Provider};
 use crate::identity::services::sessions::{self, AuthSession};
@@ -66,17 +69,32 @@ pub async fn get_login_methods(
     }))
 }
 
-/// Starts a link flow bound to the caller; the page then navigates to `url`.
+/// Starts a link flow bound to the caller AND to this browser (cookie set
+/// on this same-origin response); the page then navigates to `url`.
 pub async fn start_link(
     State(state): State<AppState>,
     CurrentUser(auth): CurrentUser,
     Path(provider): Path<String>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Response, AppError> {
     refuse_impersonation(&auth)?;
     let provider = Provider::parse(&provider)
         .ok_or_else(|| AppError::NotFound("unknown login provider".to_string()))?;
-    let url = oidc::start(&state, provider, Some(auth.real_user.id)).await?;
-    Ok(Json(json!({ "url": url })))
+    if !state.rate.check(
+        &format!("oidc-link:{}", auth.real_user.id),
+        10,
+        std::time::Duration::from_secs(15 * 60),
+    ) {
+        return Err(AppError::TooManyRequests);
+    }
+    let flow = oidc::start(&state, provider, Some(auth.real_user.id)).await?;
+    Ok((
+        AppendHeaders([(
+            header::SET_COOKIE,
+            set_binding_cookie(&state.config, &flow.browser_binding),
+        )]),
+        Json(json!({ "url": flow.authorize_url })),
+    )
+        .into_response())
 }
 
 pub async fn unlink(

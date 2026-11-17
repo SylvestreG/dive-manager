@@ -77,6 +77,12 @@ async fn jwks() -> Json<Value> {
 struct Harness {
     app: TestApp,
     fake: Shared,
+    /// The "browser": binding cookie set by the last flow start.
+    cookie: Mutex<Option<String>>,
+}
+
+fn cookie_pair(set_cookie: Option<String>) -> Option<String> {
+    set_cookie.map(|c| c.split(';').next().unwrap().to_string())
 }
 
 async fn harness() -> Harness {
@@ -120,7 +126,11 @@ async fn harness() -> Harness {
         });
     })
     .await;
-    Harness { app, fake }
+    Harness {
+        app,
+        fake,
+        cookie: Mutex::new(None),
+    }
 }
 
 fn query(url: &str) -> HashMap<String, String> {
@@ -132,19 +142,42 @@ fn query(url: &str) -> HashMap<String, String> {
 }
 
 impl Harness {
-    /// Runs start → (provider) → callback; `claims(nonce)` builds the
-    /// id_token claims. Returns the frontend redirect target.
+    fn browser(&self) -> Option<String> {
+        self.cookie.lock().unwrap().clone()
+    }
+
+    /// Runs start → (provider) → callback in this "browser"; `claims(nonce)`
+    /// builds the id_token claims. Returns the frontend redirect target.
     async fn login(&self, provider: &str, claims: impl FnOnce(&str) -> Value) -> String {
-        let (status, location) = self
+        let (status, location, set_cookie) = self
             .app
-            .navigate(
+            .navigate_with_cookie(
                 Method::GET,
                 &format!("/api/v1/auth/oidc/{provider}/start"),
+                None,
                 None,
             )
             .await;
         assert!(status.is_redirection(), "start: {status}");
+        *self.cookie.lock().unwrap() = cookie_pair(set_cookie);
         self.callback(provider, &location, claims).await
+    }
+
+    /// Starts a profile link flow for `token` in this "browser".
+    async fn start_link(&self, token: &str, provider: &str) -> String {
+        let (status, body, set_cookie) = self
+            .app
+            .request_with_cookie(
+                Method::POST,
+                &format!("/api/v1/me/login-methods/{provider}/link"),
+                Some(token),
+                None,
+                None,
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        *self.cookie.lock().unwrap() = cookie_pair(set_cookie);
+        body["url"].as_str().unwrap().to_string()
     }
 
     async fn callback(
@@ -153,23 +186,38 @@ impl Harness {
         authorize_url: &str,
         claims: impl FnOnce(&str) -> Value,
     ) -> String {
+        let browser = self.browser();
+        self.callback_in(browser.as_deref(), provider, authorize_url, claims)
+            .await
+    }
+
+    /// Callback delivered to a given browser (`cookie`), e.g. a victim's.
+    async fn callback_in(
+        &self,
+        cookie: Option<&str>,
+        provider: &str,
+        authorize_url: &str,
+        claims: impl FnOnce(&str) -> Value,
+    ) -> String {
         let params = query(authorize_url);
         self.fake.lock().unwrap().next_claims = Some(claims(&params["nonce"]));
         let state = &params["state"];
-        let (_, location) = if provider == "apple" {
+        let (_, location, _) = if provider == "apple" {
             self.app
-                .navigate(
+                .navigate_with_cookie(
                     Method::POST,
                     "/api/v1/auth/oidc/apple/callback",
                     Some(&format!("code=fake-code&state={state}")),
+                    cookie,
                 )
                 .await
         } else {
             self.app
-                .navigate(
+                .navigate_with_cookie(
                     Method::GET,
                     &format!("/api/v1/auth/oidc/{provider}/callback?code=fake-code&state={state}"),
                     None,
+                    cookie,
                 )
                 .await
         };
@@ -177,18 +225,26 @@ impl Harness {
     }
 
     async fn exchange(&self, location: &str) -> (StatusCode, Value) {
+        let browser = self.browser();
+        self.exchange_in(browser.as_deref(), location).await
+    }
+
+    async fn exchange_in(&self, cookie: Option<&str>, location: &str) -> (StatusCode, Value) {
         let code = location
             .split("code=")
             .nth(1)
             .expect("exchange code in redirect");
-        self.app
-            .request(
+        let (status, body, _) = self
+            .app
+            .request_with_cookie(
                 Method::POST,
                 "/api/v1/auth/exchange",
                 None,
                 Some(json!({ "code": code })),
+                cookie,
             )
-            .await
+            .await;
+        (status, body)
     }
 }
 
@@ -426,10 +482,11 @@ async fn hostile_tokens_and_replays_are_rejected() {
     assert_eq!(location, "http://test/login?error=sso");
 
     // A state is single use, and bound to its provider.
-    let (_, start) = h
+    let (_, start, set_cookie) = h
         .app
-        .navigate(Method::GET, "/api/v1/auth/oidc/google/start", None)
+        .navigate_with_cookie(Method::GET, "/api/v1/auth/oidc/google/start", None, None)
         .await;
+    *h.cookie.lock().unwrap() = cookie_pair(set_cookie);
     let ok = h
         .callback("google", &start, |n| {
             claims(GOOGLE_CLIENT, n, "g-y", "nobody@example.com", json!(true))
@@ -481,18 +538,9 @@ async fn profile_link_unlink_and_already_used() {
     let other = h.app.create_user("other@example.com", true, false).await;
 
     // Link Google from the profile (no email match needed).
-    let (status, body) = h
-        .app
-        .request(
-            Method::POST,
-            "/api/v1/me/login-methods/google/link",
-            Some(&token),
-            None,
-        )
-        .await;
-    assert_eq!(status, StatusCode::OK, "{body}");
+    let url = h.start_link(&token, "google").await;
     let location = h
-        .callback("google", body["url"].as_str().unwrap(), |n| {
+        .callback("google", &url, |n| {
             claims(GOOGLE_CLIENT, n, "g-me", "personal@gmail.com", json!(true))
         })
         .await;
@@ -507,17 +555,9 @@ async fn profile_link_unlink_and_already_used() {
 
     // The same Google account cannot be linked to another user.
     let other_token = h.app.session_for(other.id).await;
-    let (_, body) = h
-        .app
-        .request(
-            Method::POST,
-            "/api/v1/me/login-methods/google/link",
-            Some(&other_token),
-            None,
-        )
-        .await;
+    let url = h.start_link(&other_token, "google").await;
     let location = h
-        .callback("google", body["url"].as_str().unwrap(), |n| {
+        .callback("google", &url, |n| {
             claims(GOOGLE_CLIENT, n, "g-me", "personal@gmail.com", json!(true))
         })
         .await;
@@ -557,16 +597,8 @@ async fn last_login_method_cannot_be_removed() {
         .await
         .unwrap();
     let token = h.app.session_for(user.id).await;
-    let (_, body) = h
-        .app
-        .request(
-            Method::POST,
-            "/api/v1/me/login-methods/google/link",
-            Some(&token),
-            None,
-        )
-        .await;
-    h.callback("google", body["url"].as_str().unwrap(), |n| {
+    let url = h.start_link(&token, "google").await;
+    h.callback("google", &url, |n| {
         claims(GOOGLE_CLIENT, n, "g-only", "x@gmail.com", json!(true))
     })
     .await;
@@ -590,6 +622,8 @@ async fn email_change_takes_effect_only_when_confirmed() {
     let token = h.app.session_for(me.id).await;
     h.app.create_user("taken@example.com", true, false).await;
 
+    // An address in use gets the same answer and NO email (no oracle).
+    let mails = h.app.state.mailer.captured().len();
     let (status, _) = h
         .app
         .request(
@@ -599,7 +633,8 @@ async fn email_change_takes_effect_only_when_confirmed() {
             Some(json!({ "email": "taken@example.com" })),
         )
         .await;
-    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(h.app.state.mailer.captured().len(), mails);
 
     let (status, _) = h
         .app
@@ -719,4 +754,174 @@ async fn providers_list_reflects_configuration() {
         location, "http://test/login?error=sso",
         "unconfigured provider"
     );
+}
+
+#[tokio::test]
+async fn a_link_flow_cannot_be_finished_in_another_browser() {
+    let h = harness().await;
+    let attacker = h.app.create_user("attacker@example.com", true, false).await;
+    let attacker_token = h.app.session_for(attacker.id).await;
+    // The attacker starts a link flow and sends the URL to a victim.
+    let url = h.start_link(&attacker_token, "google").await;
+
+    // The victim's browser has no binding cookie (or its own).
+    for victim_cookie in [None, Some("dm_oidc=victim-own-value")] {
+        let location = h
+            .callback_in(victim_cookie, "google", &url, |n| {
+                claims(
+                    GOOGLE_CLIENT,
+                    n,
+                    "victim-sub",
+                    "victim@gmail.com",
+                    json!(true),
+                )
+            })
+            .await;
+        assert_eq!(location, "http://test/login?error=sso");
+    }
+    assert!(
+        identities_of(&h.app, attacker.id).await.is_empty(),
+        "the victim's Google account was NOT planted on the attacker"
+    );
+}
+
+#[tokio::test]
+async fn login_csrf_the_code_only_works_in_the_starting_browser() {
+    let h = harness().await;
+    h.app.create_user("attacker@example.com", true, false).await;
+    let location = h
+        .login("google", |n| {
+            claims(
+                GOOGLE_CLIENT,
+                n,
+                "g-att",
+                "attacker@example.com",
+                json!(true),
+            )
+        })
+        .await;
+    assert!(
+        location.starts_with("http://test/auth/done?code="),
+        "{location}"
+    );
+    // Sent to a victim: their browser cannot trade it.
+    let (status, _) = h.exchange_in(None, &location).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    // A start without cookie is also refused at the callback.
+    let (_, start, _) = h
+        .app
+        .navigate_with_cookie(Method::GET, "/api/v1/auth/oidc/google/start", None, None)
+        .await;
+    let location = h
+        .callback_in(None, "google", &start, |n| {
+            claims(
+                GOOGLE_CLIENT,
+                n,
+                "g-att",
+                "attacker@example.com",
+                json!(true),
+            )
+        })
+        .await;
+    assert_eq!(location, "http://test/login?error=sso");
+}
+
+#[tokio::test]
+async fn binding_cookie_is_host_only_httponly_and_cleared() {
+    let h = harness().await;
+    let (_, _, set_cookie) = h
+        .app
+        .navigate_with_cookie(Method::GET, "/api/v1/auth/oidc/google/start", None, None)
+        .await;
+    let cookie = set_cookie.unwrap();
+    assert!(cookie.starts_with("dm_oidc="), "{cookie}");
+    assert!(cookie.contains("HttpOnly") && cookie.contains("Path=/"));
+    assert!(cookie.contains("Max-Age=600"));
+}
+
+#[tokio::test]
+async fn old_mailbox_links_die_when_the_email_changes() {
+    let h = harness().await;
+    let me = h.app.create_user("old@example.com", true, false).await;
+    let token = h.app.session_for(me.id).await;
+
+    // A login link sits in the old mailbox.
+    h.app
+        .request(
+            Method::POST,
+            "/api/v1/auth/magic-link",
+            None,
+            Some(json!({ "email": "old@example.com" })),
+        )
+        .await;
+    let old_link = h.app.last_email_token("/auth/ml/");
+
+    h.app
+        .request(
+            Method::PUT,
+            "/api/v1/me/email",
+            Some(&token),
+            Some(json!({ "email": "new@example.com" })),
+        )
+        .await;
+    let confirm = h.app.last_email_token("/auth/ml/");
+    let (status, _) = h
+        .app
+        .request(
+            Method::POST,
+            "/api/v1/auth/magic-link/consume",
+            None,
+            Some(json!({ "token": confirm })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, _) = h
+        .app
+        .request(
+            Method::POST,
+            "/api/v1/auth/magic-link/consume",
+            None,
+            Some(json!({ "token": old_link })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED, "old-mailbox link is dead");
+}
+
+#[tokio::test]
+async fn an_unverified_email_is_not_a_remaining_login_method() {
+    let h = harness().await;
+    // Admin-typed (possibly mistyped) email, never proven.
+    let user = h.app.create_user("typo@example.com", false, false).await;
+    let token = h.app.session_for(user.id).await;
+    let url = h.start_link(&token, "google").await;
+    h.callback("google", &url, |n| {
+        claims(GOOGLE_CLIENT, n, "g-real", "real@gmail.com", json!(true))
+    })
+    .await;
+    let identity = identities_of(&h.app, user.id).await.pop().unwrap();
+    let (status, _) = h
+        .app
+        .request(
+            Method::DELETE,
+            &format!("/api/v1/me/login-methods/{}", identity.id),
+            Some(&token),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+}
+
+#[tokio::test]
+async fn oidc_start_is_rate_limited_per_ip() {
+    let h = harness().await;
+    let mut last = String::new();
+    for _ in 0..31 {
+        let (_, location) = h
+            .app
+            .navigate(Method::GET, "/api/v1/auth/oidc/google/start", None)
+            .await;
+        last = location;
+    }
+    assert_eq!(last, "http://test/login?error=rate_limited");
 }

@@ -88,9 +88,28 @@ impl TestApp {
         token: Option<&str>,
         body: Option<Value>,
     ) -> (StatusCode, Value) {
+        let (status, value, _) = self
+            .request_with_cookie(method, path, token, body, None)
+            .await;
+        (status, value)
+    }
+
+    /// JSON request carrying an optional `Cookie` header; also returns the
+    /// `Set-Cookie` header of the response.
+    pub async fn request_with_cookie(
+        &self,
+        method: Method,
+        path: &str,
+        token: Option<&str>,
+        body: Option<Value>,
+        cookie: Option<&str>,
+    ) -> (StatusCode, Value, Option<String>) {
         let mut builder = Request::builder().method(method).uri(path);
         if let Some(token) = token {
             builder = builder.header("Authorization", format!("Bearer {token}"));
+        }
+        if let Some(cookie) = cookie {
+            builder = builder.header("Cookie", cookie);
         }
         let request = match body {
             Some(body) => builder
@@ -106,6 +125,11 @@ impl TestApp {
             .await
             .expect("response");
         let status = response.status();
+        let set_cookie = response
+            .headers()
+            .get("set-cookie")
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_string);
         let bytes = response
             .into_body()
             .collect()
@@ -117,7 +141,7 @@ impl TestApp {
         } else {
             serde_json::from_slice(&bytes).unwrap_or(Value::Null)
         };
-        (status, value)
+        (status, value, set_cookie)
     }
 
     /// `activated`: whether the account has already logged in once
@@ -130,10 +154,26 @@ impl TestApp {
         path: &str,
         form: Option<&str>,
     ) -> (StatusCode, String) {
-        let builder = Request::builder().method(method).uri(path).header(
+        let (status, location, _) = self.navigate_with_cookie(method, path, form, None).await;
+        (status, location)
+    }
+
+    /// Navigation with an optional `Cookie` header; returns the status, the
+    /// `Location` and the `Set-Cookie` headers.
+    pub async fn navigate_with_cookie(
+        &self,
+        method: Method,
+        path: &str,
+        form: Option<&str>,
+        cookie: Option<&str>,
+    ) -> (StatusCode, String, Option<String>) {
+        let mut builder = Request::builder().method(method).uri(path).header(
             "User-Agent",
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/130.0 Safari/537.36",
         );
+        if let Some(cookie) = cookie {
+            builder = builder.header("Cookie", cookie);
+        }
         let request = match form {
             Some(body) => builder
                 .header("Content-Type", "application/x-www-form-urlencoded")
@@ -153,7 +193,12 @@ impl TestApp {
             .and_then(|v| v.to_str().ok())
             .unwrap_or_default()
             .to_string();
-        (response.status(), location)
+        let set_cookie = response
+            .headers()
+            .get("set-cookie")
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_string);
+        (response.status(), location, set_cookie)
     }
 
     pub async fn create_user(

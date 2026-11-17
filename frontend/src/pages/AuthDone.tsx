@@ -21,6 +21,8 @@ export default function AuthDone() {
   useEffect(() => {
     if (!code || exchangedCodes.has(code)) return;
     exchangedCodes.add(code);
+    // Drop the one-time code from the address bar / history right away.
+    window.history.replaceState(null, "", window.location.pathname);
     api
       .exchangeCode(code)
       .then((session) => {

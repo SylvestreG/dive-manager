@@ -8,7 +8,8 @@
 //!   session, so no session token ever travels in a URL;
 //! - `login_magic_links.purpose` + `payload` (confirm an identity link,
 //!   confirm an email change);
-//! - `auth_sessions.client_label` ("My devices").
+//! - `auth_sessions.client_label` ("My devices");
+//! - provider CHECKs (justified raw DDL on the renamed table, see below).
 
 use sea_orm_migration::prelude::*;
 
@@ -39,6 +40,16 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
+        // Justified raw DDL (ADR-0006 §1): sea-query cannot add a CHECK to an
+        // existing table.
+        manager
+            .get_connection()
+            .execute_unprepared(
+                "ALTER TABLE login_identities ADD CONSTRAINT login_identities_provider_check \
+                 CHECK (provider IN ('google', 'microsoft', 'apple', 'facebook'))",
+            )
+            .await?;
+
         manager
             .create_table(
                 Table::create()
@@ -50,7 +61,16 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .unique_key(),
                     )
-                    .col(ColumnDef::new(OidcFlows::Provider).text().not_null())
+                    .col(
+                        ColumnDef::new(OidcFlows::Provider)
+                            .text()
+                            .not_null()
+                            .check(Expr::col(OidcFlows::Provider).is_in(PROVIDERS)),
+                    )
+                    // SHA-256 of the random value of the browser-binding
+                    // cookie set at start: the callback must present it
+                    // (no login CSRF, no link flow finished by someone else).
+                    .col(ColumnDef::new(OidcFlows::BrowserHash).binary().not_null())
                     .col(
                         ColumnDef::new(OidcFlows::Client)
                             .text()
@@ -121,6 +141,13 @@ impl MigrationTrait for Migration {
                     )
                     .col(ColumnDef::new(ExchangeCodes::UserId).uuid().not_null())
                     .col(ColumnDef::new(ExchangeCodes::ClientLabel).text().null())
+                    // Same browser binding: only the browser that started the
+                    // flow can trade the code for a session.
+                    .col(
+                        ColumnDef::new(ExchangeCodes::BrowserHash)
+                            .binary()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(ExchangeCodes::ExpiresAt)
                             .timestamp_with_time_zone()
@@ -214,6 +241,12 @@ impl MigrationTrait for Migration {
                 .await?;
         }
         manager
+            .get_connection()
+            .execute_unprepared(
+                "ALTER TABLE login_identities DROP CONSTRAINT IF EXISTS login_identities_provider_check",
+            )
+            .await?;
+        manager
             .alter_table(
                 Table::alter()
                     .table(LoginIdentities::Table)
@@ -230,6 +263,8 @@ impl MigrationTrait for Migration {
             .await
     }
 }
+
+const PROVIDERS: [&str; 4] = ["google", "microsoft", "apple", "facebook"];
 
 #[derive(DeriveIden)]
 enum UserOidcIdentities {
@@ -255,6 +290,7 @@ enum OidcFlows {
     Id,
     StateHash,
     Provider,
+    BrowserHash,
     Client,
     Purpose,
     Nonce,
@@ -271,6 +307,7 @@ enum ExchangeCodes {
     CodeHash,
     UserId,
     ClientLabel,
+    BrowserHash,
     ExpiresAt,
     ConsumedAt,
 }

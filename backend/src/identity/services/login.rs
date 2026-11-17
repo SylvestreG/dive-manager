@@ -126,7 +126,25 @@ pub async fn consume_magic_link(
         }
         login_magic_links::PURPOSE_CONFIRM_EMAIL => {
             let new_email = link.payload["new_email"].as_str().ok_or_else(invalid)?;
-            super::users::set_email(&txn, user, new_email).await?
+            let old_email = user.email.clone();
+            let user = super::users::set_email(&txn, user, new_email).await?;
+            // The old mailbox may be lost or compromised (that is often WHY
+            // the address changes): every pending link sent there dies.
+            invalidate_all_pending_links(&txn, user.id).await?;
+            super::audit::record(
+                &txn,
+                super::audit::Actor {
+                    user_id: user.id,
+                    impersonated_user_id: None,
+                },
+                None,
+                "email.changed",
+                "user",
+                Some(user.id),
+                serde_json::json!({ "from": old_email, "to": user.email }),
+            )
+            .await?;
+            user
         }
         _ => return Err(invalid()),
     };
@@ -136,6 +154,23 @@ pub async fn consume_magic_link(
         sessions::create_login_session(&txn, &state.config, user.id, client_label).await?;
     txn.commit().await?;
     Ok((session_token, user))
+}
+
+async fn invalidate_all_pending_links<C: ConnectionTrait>(
+    conn: &C,
+    user_id: Uuid,
+) -> Result<(), AppError> {
+    LoginMagicLinks::update_many()
+        .col_expr(
+            login_magic_links::Column::InvalidatedAt,
+            Expr::value(Some(now())),
+        )
+        .filter(login_magic_links::Column::UserId.eq(user_id))
+        .filter(login_magic_links::Column::ConsumedAt.is_null())
+        .filter(login_magic_links::Column::InvalidatedAt.is_null())
+        .exec(conn)
+        .await?;
+    Ok(())
 }
 
 async fn invalidate_pending_links<C: ConnectionTrait>(
@@ -158,7 +193,9 @@ async fn invalidate_pending_links<C: ConnectionTrait>(
 }
 
 /// R12: an account email change takes effect only when the NEW address
-/// clicks its confirmation link. Refuses addresses used by another account.
+/// clicks its confirmation link. An address used by another account gets
+/// the same answer but no email (no account-existence oracle); the unique
+/// constraint backstops the race at confirmation time.
 pub async fn request_email_change(
     state: &AppState,
     user: &users::Model,
@@ -171,19 +208,18 @@ pub async fn request_email_change(
             "this is already your email".to_string(),
         ));
     }
-    if super::users::find_by_email(&state.db, &new_email)
-        .await?
-        .is_some()
-    {
-        return Err(AppError::Conflict(
-            "this email is used by another account".to_string(),
-        ));
-    }
     if !state
         .rate
         .check(&format!("email-change:{}", user.id), 3, RATE_WINDOW)
     {
         return Err(AppError::TooManyRequests);
+    }
+    if super::users::find_by_email(&state.db, &new_email)
+        .await?
+        .is_some()
+    {
+        tracing::info!(user_id = %user.id, "email change to an address in use: silently ignored");
+        return Ok(());
     }
     invalidate_pending_links(&state.db, user.id, login_magic_links::PURPOSE_CONFIRM_EMAIL).await?;
     let token = tokens::generate();
