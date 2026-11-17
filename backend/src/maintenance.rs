@@ -3,7 +3,9 @@ use std::time::Duration as StdDuration;
 use chrono::Duration;
 use sea_orm::*;
 
-use crate::identity::entities::{auth_sessions, login_magic_links, prelude::*};
+use crate::identity::entities::{
+    auth_sessions, exchange_codes, login_magic_links, oidc_flows, prelude::*,
+};
 use crate::now;
 
 /// Hourly in-process cleanup of expired secrets — no external job runner
@@ -22,6 +24,17 @@ pub fn spawn_cleanup_task(db: DatabaseConnection) {
 
 async fn cleanup_once(db: &DatabaseConnection) -> Result<(), DbErr> {
     let current = now();
+
+    // OIDC round-trips (10 min) and exchange codes (60 s): keep a day for
+    // diagnostics, then drop.
+    OidcFlows::delete_many()
+        .filter(oidc_flows::Column::ExpiresAt.lt(current - Duration::days(1)))
+        .exec(db)
+        .await?;
+    ExchangeCodes::delete_many()
+        .filter(exchange_codes::Column::ExpiresAt.lt(current - Duration::days(1)))
+        .exec(db)
+        .await?;
 
     LoginMagicLinks::delete_many()
         .filter(login_magic_links::Column::ExpiresAt.lt(current - Duration::days(7)))

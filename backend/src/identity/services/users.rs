@@ -143,6 +143,23 @@ pub async fn record_login<C: ConnectionTrait>(
     Ok(active.update(conn).await?)
 }
 
+/// Switches the account email to a PROVEN address (confirm_email magic link
+/// clicked). Uniqueness is enforced by the database (→ 409 on a race).
+pub async fn set_email<C: ConnectionTrait>(
+    conn: &C,
+    user: users::Model,
+    new_email: &str,
+) -> Result<users::Model, AppError> {
+    let email = normalize_email(new_email);
+    validate_email(&email)?;
+    let at = now();
+    let mut active: users::ActiveModel = user.into();
+    active.email = Set(Some(email));
+    active.email_verified_at = Set(Some(at));
+    active.updated_at = Set(at);
+    Ok(active.update(conn).await?)
+}
+
 pub async fn set_global_admin<C: ConnectionTrait>(
     conn: &C,
     user: users::Model,

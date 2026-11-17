@@ -14,6 +14,58 @@ pub struct Config {
     /// Origin of the FFESSM licence-info service scraped by the licence
     /// lookup. Overridable so tests can point at a local stub.
     pub ffessm_infolicence_base_url: String,
+    /// SSO providers (ADR-0009). A provider absent here is simply not
+    /// offered on the login screen.
+    pub oidc: OidcConfig,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(default)]
+pub struct OidcConfig {
+    pub google: Option<OidcClientConfig>,
+    pub microsoft: Option<OidcClientConfig>,
+    pub apple: Option<AppleClientConfig>,
+}
+
+#[derive(Clone, Deserialize)]
+pub struct OidcClientConfig {
+    pub client_id: String,
+    pub client_secret: String,
+    /// Test/dev override of the provider's endpoints (defaults are the real
+    /// provider's).
+    #[serde(default)]
+    pub endpoints: Option<OidcEndpoints>,
+}
+
+impl std::fmt::Debug for OidcClientConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OidcClientConfig")
+            .field("client_id", &self.client_id)
+            .field("client_secret", &"<redacted>")
+            .field("endpoints", &self.endpoints)
+            .finish()
+    }
+}
+
+/// Sign in with Apple: the client secret is a short-lived ES256 JWT signed
+/// with the `.p8` key — never a static secret.
+#[derive(Debug, Clone, Deserialize)]
+pub struct AppleClientConfig {
+    /// The Services ID (e.g. `fr.divemanager.web`).
+    pub client_id: String,
+    pub team_id: String,
+    pub key_id: String,
+    pub private_key_path: String,
+    #[serde(default)]
+    pub endpoints: Option<OidcEndpoints>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct OidcEndpoints {
+    pub authorize_url: String,
+    pub token_url: String,
+    pub jwks_url: String,
+    pub issuer: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]

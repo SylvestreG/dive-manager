@@ -11,9 +11,10 @@ APIs, never through another module's tables.
 ## Foundation (not club-toggleable)
 
 ### `identity` — status: **implemented**, rework in progress (`backend/src/identity/`)
-Users (email optional, `activated_at`), authentication (login magic links;
-OIDC Google/Microsoft = auth slice 2 — ADR-0009, no passwords), revocable
-sessions, bootstrap, audit log. No club knowledge. Designs:
+Users (email optional, `activated_at`), authentication (login magic links +
+OIDC Google/Microsoft/Apple-web with linking rules, ADR-0009, no passwords),
+self-service login methods, email change, "my devices", revocable sessions,
+bootstrap, audit log. No club knowledge. Designs:
 `docs/design/foundation-module.md`, `docs/design/auth-onboarding.md`.
 
 ### `onboarding` — status: **implementing** (`backend/src/onboarding/`; slice 1 done)

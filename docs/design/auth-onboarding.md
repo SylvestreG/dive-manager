@@ -1,7 +1,9 @@
 # Auth & member onboarding redesign — `identity` rework + `onboarding` module
 
 Status: **approved** (product owner, 2026-11-16) — ADR-0009 accepted.
-Slice 1 implemented (2026-11-16); slices 2–6 pending.
+Slice 1 implemented (2026-11-16). Slice 2 implemented (2026-11-17) together
+with Sign in with Apple **for the web** (the iOS native flow stays in slice 5);
+slices 3–6 pending.
 Supersedes the authentication parts of ADR-0004 and the foundation design
 (`foundation-module.md` §5 login/invitations). Proposed as **ADR-0009**
 (text in §14). Nothing here touches Fosse: Fosse keeps its own auth

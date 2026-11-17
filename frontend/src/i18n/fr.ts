@@ -42,7 +42,86 @@ export const t = {
     magicLinkSent:
       "Si cette adresse est connue, un lien de connexion vient d'être envoyé par email. Il est valable 12 heures.",
     changeEmail: "Changer d'adresse",
+    or: "ou",
+    continueWith: (provider: string) => `Continuer avec ${provider}`,
+    emailOption: "Recevoir un lien par email",
+    errors: {
+      sso: "La connexion n'a pas abouti. Réessayez ou utilisez le lien par email.",
+      sso_cancelled: "Connexion annulée.",
+      rate_limited: "Trop de tentatives, réessayez dans quelques minutes.",
+    } as Record<string, string>,
+    privacy: "Confidentialité",
     tooManyAttempts: "Trop de tentatives, réessayez dans quelques minutes.",
+  },
+
+  privacy: {
+    title: "Politique de confidentialité",
+    updated: "Dernière mise à jour : 17 novembre 2026",
+    sections: [
+      {
+        title: "Qui sommes-nous ?",
+        paragraphs: [
+          "Dive Manager est un service de gestion de clubs de plongée, exploité par [à compléter : nom de la personne ou de la structure], [à compléter : adresse]. Contact : [à compléter : email de contact].",
+          "Chaque club utilisateur reste responsable des données de ses membres qu'il saisit ou importe ; l'exploitant agit pour son compte.",
+        ],
+      },
+      {
+        title: "Données traitées",
+        paragraphs: [
+          "Identité et contact : nom, prénom, adresse email, téléphone.",
+          "Plongée : date de naissance, numéro de licence, niveaux et brevets, date du certificat médical, préférences de matériel, compétences validées.",
+          "Connexion : identifiant technique fourni par Google, Microsoft ou Apple si vous choisissez ces méthodes, et la liste de vos appareils connectés (type d'appareil et de navigateur, sans adresse IP).",
+        ],
+      },
+      {
+        title: "Connexion avec Google, Microsoft ou Apple",
+        paragraphs: [
+          "Si vous utilisez l'une de ces méthodes, nous recevons uniquement votre identifiant chez ce fournisseur, votre nom et votre adresse email. Nous n'accédons à aucune autre donnée de votre compte (emails, contacts, fichiers…).",
+          "Avec « Masquer mon adresse email » d'Apple, nous recevons une adresse relais : nos emails vous parviennent via Apple.",
+        ],
+      },
+      {
+        title: "Finalités",
+        paragraphs: [
+          "Gérer votre adhésion et les activités de vos clubs (sorties, fosses, palanquées, formations), vérifier les prérogatives de plongée et vous envoyer les emails nécessaires au service (connexion, informations du club). Aucune publicité, aucune revente, aucun pistage.",
+        ],
+      },
+      {
+        title: "Qui y a accès ?",
+        paragraphs: [
+          "Les responsables des clubs dont vous êtes membre, selon leurs droits ; l'exploitant de la plateforme pour l'assistance. Les données sont hébergées [à compléter : pays / hébergeur].",
+        ],
+      },
+      {
+        title: "Durée de conservation",
+        paragraphs: [
+          "Les données sont conservées tant que vous êtes membre d'un club utilisant Dive Manager. Les sessions de connexion expirent après 6 mois d'inactivité ; les demandes d'accès traitées sont supprimées après 90 jours.",
+        ],
+      },
+      {
+        title: "Vos droits",
+        paragraphs: [
+          "Vous pouvez accéder à vos données, les rectifier ou demander leur suppression, et retirer une méthode de connexion depuis votre profil. Pour toute demande : [à compléter : email de contact]. Vous pouvez aussi saisir la CNIL (www.cnil.fr).",
+        ],
+      },
+      {
+        title: "Cookies",
+        paragraphs: [
+          "Dive Manager n'utilise aucun cookie publicitaire ni outil de mesure d'audience. Votre session est conservée dans le stockage local de votre navigateur.",
+        ],
+      },
+    ],
+  },
+
+  sso: {
+    finishing: "Connexion en cours…",
+    failed: "Cette connexion a expiré. Recommencez depuis la page de connexion.",
+    checkEmailTitle: "Vérifiez vos emails",
+    checkEmail:
+      "Un compte Dive Manager utilise déjà cette adresse. Pour des raisons de sécurité, nous vous avons envoyé un email : cliquez sur le lien pour confirmer et vous connecter.",
+    unknownTitle: "Compte introuvable",
+    unknown:
+      "Aucun compte Dive Manager n'est associé à cette connexion. Demandez à votre club de vous ajouter, ou connectez-vous avec l'adresse email que votre club connaît.",
   },
 
   magicLink: {
@@ -122,6 +201,30 @@ export const t = {
       "Saisissez l'email d'un compte à désactiver (ses sessions seront révoquées) ou à réactiver.",
     disable: "Désactiver",
     enable: "Réactiver",
+  },
+
+  loginMethods: {
+    title: "Méthodes de connexion",
+    devicesTitle: "Mes appareils",
+    emailLink: "Lien par email",
+    noEmail: "Aucune adresse — ajoutez-en une ci-dessous",
+    lastUsed: (date: string) => `utilisé le ${date}`,
+    remove: "Retirer",
+    removed: "Méthode de connexion retirée.",
+    add: (provider: string) => `Ajouter ${provider}`,
+    linked: (provider: string) => `${provider} est maintenant associé à votre compte.`,
+    alreadyUsed:
+      "Ce compte est déjà associé à un autre compte Dive Manager (ou vous en avez déjà un de ce type : retirez-le d'abord).",
+    linkFailed: "L'association n'a pas abouti. Réessayez.",
+    changeEmail: "Changer d'adresse email",
+    setEmail: "Ajouter une adresse email",
+    sendConfirmation: "Envoyer un lien de confirmation",
+    emailConfirmationSent: (email: string) =>
+      `Un lien de confirmation a été envoyé à ${email}. L'adresse changera quand vous aurez cliqué dessus.`,
+    unknownDevice: "Appareil inconnu",
+    thisDevice: "cet appareil",
+    lastSeen: (date: string) => `dernière activité le ${date}`,
+    logoutDevice: "Déconnecter",
   },
 
   profile: {

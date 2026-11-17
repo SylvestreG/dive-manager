@@ -72,6 +72,7 @@ async fn serve(config: Config, db: sea_orm::DatabaseConnection) -> Result<(), St
         config: Arc::new(config),
         mailer: Arc::new(mailer),
         rate: Arc::new(RateLimiter::default()),
+        oidc: Default::default(),
     };
     let router = app::build_router(state);
 

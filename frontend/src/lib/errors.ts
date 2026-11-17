@@ -29,6 +29,12 @@ const KNOWN_MESSAGES: Record<string, string> = {
   "action not allowed while impersonating":
     "Action impossible pendant une impersonation.",
   "this account is disabled": "Ce compte est désactivé.",
+  "cannot remove your last login method":
+    "Impossible de retirer votre dernière méthode de connexion (une adresse email doit être confirmée pour en tenir lieu).",
+  "this is already your email": "C'est déjà votre adresse email.",
+  "invalid or expired login code": "Cette connexion a expiré, recommencez.",
+  "this login is already used by another account":
+    "Ce compte est déjà associé à un autre compte Dive Manager.",
   "user is not a member of this club":
     "Cette personne n'est pas membre du club.",
   "not a member of this club": "Vous n'êtes pas membre de ce club.",
