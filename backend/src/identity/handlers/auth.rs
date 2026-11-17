@@ -1,4 +1,5 @@
 use axum::extract::State;
+use axum::http::{header, HeaderMap};
 use axum::Json;
 use serde::Deserialize;
 use serde_json::json;
@@ -33,9 +34,11 @@ pub struct ConsumeMagicLinkRequest {
 
 pub async fn consume_magic_link(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(body): Json<ConsumeMagicLinkRequest>,
 ) -> Result<Json<SessionResponse>, AppError> {
-    let (token, user) = login::consume_magic_link(&state, &body.token).await?;
+    let (token, user) =
+        login::consume_magic_link(&state, &body.token, device_label(&headers)).await?;
     Ok(Json(SessionResponse {
         token,
         user: UserDto::from(&user),
@@ -89,4 +92,13 @@ pub async fn stop_impersonation(
         token,
         user: UserDto::from(&auth.real_user),
     }))
+}
+
+/// Coarse device label from the User-Agent ("My devices").
+pub(crate) fn device_label(headers: &HeaderMap) -> Option<String> {
+    sessions::client_label(
+        headers
+            .get(header::USER_AGENT)
+            .and_then(|v| v.to_str().ok()),
+    )
 }

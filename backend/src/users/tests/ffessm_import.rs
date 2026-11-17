@@ -73,6 +73,7 @@ async fn stub_router(app: &TestApp) -> Router {
         config: Arc::new(cfg),
         mailer: app.state.mailer.clone(),
         rate: app.state.rate.clone(),
+        oidc: app.state.oidc.clone(),
     };
     crate::app::build_router(state)
 }
@@ -263,6 +264,7 @@ async fn upstream_redirect_means_wrong_key_not_an_error() {
         config: Arc::new(cfg),
         mailer: ctx.app.state.mailer.clone(),
         rate: ctx.app.state.rate.clone(),
+        oidc: ctx.app.state.oidc.clone(),
     };
     let router = crate::app::build_router(state);
 

@@ -13,5 +13,6 @@
   "smtp": null,
   "base_url": "http://localhost:8081",
   "cors_allowed_origins": ["http://localhost:5173"],
-  "ffessm_infolicence_base_url": "https://infolicencie.ffessm.fr"
+  "ffessm_infolicence_base_url": "https://infolicencie.ffessm.fr",
+  "oidc": {}
 }

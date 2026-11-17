@@ -66,3 +66,44 @@ fn url_encode(value: &str) -> String {
         })
         .collect()
 }
+
+/// Confirmation needed before linking a login whose email the provider does
+/// not prove (auth-onboarding design R8 case 4).
+pub fn link_confirmation_email(
+    first_name: &str,
+    provider_label: &str,
+    url: &str,
+    valid_hours: i64,
+) -> (String, String) {
+    let subject = format!("Confirmez la connexion {provider_label} à Dive Manager");
+    let body = format!(
+        "<p>Bonjour {name},</p>\
+         <p>Quelqu'un vient de se connecter à Dive Manager avec un compte {provider} \
+         utilisant votre adresse email. S'il s'agit bien de vous, confirmez pour \
+         l'associer à votre compte&nbsp;:</p>\
+         <p><a href=\"{url}\">Confirmer et me connecter</a></p>\
+         <p>Ce lien est valable {hours}&nbsp;heures. <strong>Si ce n'est pas vous, \
+         ignorez cet email</strong>&nbsp;: rien ne sera associé.</p>",
+        name = escape_html(first_name),
+        provider = escape_html(provider_label),
+        url = escape_html(url),
+        hours = valid_hours,
+    );
+    (subject, body)
+}
+
+/// Confirmation of a new account email (R12): sent to the NEW address.
+pub fn email_change_email(first_name: &str, url: &str, valid_hours: i64) -> (String, String) {
+    let subject = "Confirmez votre nouvelle adresse Dive Manager".to_string();
+    let body = format!(
+        "<p>Bonjour {name},</p>\
+         <p>Confirmez cette adresse pour l'utiliser avec votre compte Dive Manager&nbsp;:</p>\
+         <p><a href=\"{url}\">Confirmer cette adresse</a></p>\
+         <p>Ce lien est valable {hours}&nbsp;heures. Si vous n'êtes pas à l'origine de \
+         cette demande, ignorez cet email.</p>",
+        name = escape_html(first_name),
+        url = escape_html(url),
+        hours = valid_hours,
+    );
+    (subject, body)
+}

@@ -55,17 +55,25 @@ pub struct TestApp {
 
 impl TestApp {
     pub async fn new() -> TestApp {
+        TestApp::with_config(|_| {}).await
+    }
+
+    /// Like `new`, with a hook to adjust the configuration (e.g. point OIDC
+    /// providers at a local fake).
+    pub async fn with_config(adjust: impl FnOnce(&mut Config)) -> TestApp {
         let (db, db_url) = empty_database().await;
         Migrator::up(&db, None).await.expect("migrations");
 
         let mut config = Config::default();
         config.database.url = db_url;
         config.base_url = "http://test".to_string();
+        adjust(&mut config);
         let state = AppState {
             db,
             config: Arc::new(config),
             mailer: Arc::new(Mailer::capture()),
             rate: Arc::new(RateLimiter::default()),
+            oidc: Default::default(),
         };
         TestApp {
             router: app::build_router(state.clone()),
@@ -114,6 +122,40 @@ impl TestApp {
 
     /// `activated`: whether the account has already logged in once
     /// (`activated_at` set) — ADR-0009 replaced the `invited` status.
+    /// A browser navigation: returns the status and the `Location` header
+    /// (redirect endpoints such as the OIDC start/callback).
+    pub async fn navigate(
+        &self,
+        method: Method,
+        path: &str,
+        form: Option<&str>,
+    ) -> (StatusCode, String) {
+        let builder = Request::builder().method(method).uri(path).header(
+            "User-Agent",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/130.0 Safari/537.36",
+        );
+        let request = match form {
+            Some(body) => builder
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .body(Body::from(body.to_string())),
+            None => builder.body(Body::empty()),
+        }
+        .expect("request");
+        let response = self
+            .router
+            .clone()
+            .oneshot(request)
+            .await
+            .expect("response");
+        let location = response
+            .headers()
+            .get("location")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default()
+            .to_string();
+        (response.status(), location)
+    }
+
     pub async fn create_user(
         &self,
         email: &str,

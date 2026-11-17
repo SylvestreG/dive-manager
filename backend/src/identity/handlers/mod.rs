@@ -1,5 +1,7 @@
 pub mod auth;
+pub mod login_methods;
 pub mod me;
+pub mod oidc;
 
 use serde::Serialize;
 

@@ -29,6 +29,7 @@ pub struct AppState {
     pub config: Arc<Config>,
     pub mailer: Arc<Mailer>,
     pub rate: Arc<RateLimiter>,
+    pub oidc: Arc<identity::services::oidc::OidcRuntime>,
 }
 
 /// Current instant with the timezone representation SeaORM stores.

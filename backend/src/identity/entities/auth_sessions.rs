@@ -15,6 +15,8 @@ pub struct Model {
     pub last_seen_at: DateTimeWithTimeZone,
     pub expires_at: DateTimeWithTimeZone,
     pub revoked_at: Option<DateTimeWithTimeZone>,
+    /// Coarse device label ("iPhone · app", "Chrome · Mac") — no IP.
+    pub client_label: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

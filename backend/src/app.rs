@@ -9,7 +9,7 @@ use crate::competencies::handlers::{
     documents as comp_documents, me as me_competencies, member as member_competencies,
     referential as comp_referential,
 };
-use crate::identity::handlers::{auth, me as me_identity};
+use crate::identity::handlers::{auth, login_methods, me as me_identity, oidc};
 use crate::onboarding::handlers::{members as intake, platform as platform_intake};
 use crate::tenancy::handlers::{clubs, me, platform};
 use crate::users::handlers::{
@@ -26,12 +26,35 @@ pub fn build_router(state: AppState) -> Router {
         // Public authentication endpoints.
         .route("/auth/magic-link", post(auth::request_magic_link))
         .route("/auth/magic-link/consume", post(auth::consume_magic_link))
+        // SSO (ADR-0009): start/callback are browser navigations (redirects).
+        .route("/auth/providers", get(oidc::providers))
+        .route("/auth/oidc/{provider}/start", get(oidc::start))
+        .route(
+            "/auth/oidc/{provider}/callback",
+            get(oidc::callback_get).post(oidc::callback_post),
+        )
+        .route("/auth/exchange", post(oidc::exchange))
         // Authenticated session management.
         .route("/auth/logout", post(auth::logout))
         .route("/auth/logout-all", post(auth::logout_all))
         .route("/auth/stop-impersonation", post(auth::stop_impersonation))
         .route("/me", get(me::get_me))
         .route("/me/identity", put(me_identity::set_my_identity))
+        .route("/me/login-methods", get(login_methods::get_login_methods))
+        .route(
+            "/me/login-methods/{provider}/link",
+            post(login_methods::start_link),
+        )
+        .route(
+            "/me/login-methods/{identity_id}",
+            delete(login_methods::unlink),
+        )
+        .route("/me/email", put(login_methods::change_email))
+        .route("/me/sessions", get(login_methods::list_devices))
+        .route(
+            "/me/sessions/{session_id}",
+            delete(login_methods::revoke_device),
+        )
         // Self-service diving profile (user-global, no club in the URL).
         // Certifications are staff-entered only (product decision
         // 2026-08-18): no /me/certifications endpoints.
