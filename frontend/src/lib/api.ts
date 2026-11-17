@@ -50,7 +50,8 @@ async function request<T>(
   // not purge a legitimate session state.
   const isPublicAuthPath =
     path === "/auth/magic-link" ||
-    path === "/auth/magic-link/consume";
+    path === "/auth/magic-link/consume" ||
+    path === "/auth/exchange";
   if (response.status === 401 && !isPublicAuthPath) {
     clearToken();
     window.dispatchEvent(new Event("dm:unauthorized"));
@@ -191,6 +192,37 @@ export interface AddMemberResult {
   outcome: "created" | "added_existing" | "check";
   diffs: FieldDiff[];
 }
+/** SSO providers (ADR-0009). */
+export type ProviderId = "google" | "microsoft" | "apple";
+export interface ProviderDto {
+  id: ProviderId;
+  label: string;
+}
+export interface LoginMethods {
+  email: string | null;
+  email_verified: boolean;
+  identities: {
+    id: string;
+    provider: ProviderId;
+    email: string | null;
+    created_at: string;
+    last_used_at: string | null;
+  }[];
+  available_providers: ProviderId[];
+}
+export interface DeviceDto {
+  id: string;
+  label: string | null;
+  created_at: string;
+  last_seen_at: string;
+  current: boolean;
+}
+
+/** Browser navigation target that starts an SSO login (backend redirects). */
+export function oidcStartUrl(provider: ProviderId): string {
+  return `${BASE}/auth/oidc/${provider}/start`;
+}
+
 export interface ModuleDto {
   module: string;
   enabled: boolean;
@@ -430,6 +462,19 @@ export const api = {
     request<{ message: string }>("POST", "/auth/magic-link", { email }),
   consumeMagicLink: (token: string) =>
     request<SessionResponse>("POST", "/auth/magic-link/consume", { token }),
+  providers: () => request<ProviderDto[]>("GET", "/auth/providers"),
+  exchangeCode: (code: string) =>
+    request<SessionResponse>("POST", "/auth/exchange", { code }),
+  loginMethods: () => request<LoginMethods>("GET", "/me/login-methods"),
+  startLink: (provider: ProviderId) =>
+    request<{ url: string }>("POST", `/me/login-methods/${provider}/link`),
+  unlinkIdentity: (identityId: string) =>
+    request<unknown>("DELETE", `/me/login-methods/${identityId}`),
+  changeEmail: (email: string) =>
+    request<unknown>("PUT", "/me/email", { email }),
+  devices: () => request<DeviceDto[]>("GET", "/me/sessions"),
+  revokeDevice: (sessionId: string) =>
+    request<unknown>("DELETE", `/me/sessions/${sessionId}`),
   logout: () => request<unknown>("POST", "/auth/logout"),
   logoutAll: () => request<unknown>("POST", "/auth/logout-all"),
   stopImpersonation: () =>

@@ -32,6 +32,25 @@ backend/
 - No SMTP configured ⇒ emails are **logged in the backend console** (dev
   mode) — copy the magic-link / invitation URLs from there.
 
+## SSO (Google / Microsoft / Apple) — optional in dev
+
+Providers are configured in `config.json` → `oidc` (absent = button hidden):
+
+```json
+"oidc": {
+  "google":    { "client_id": "…", "client_secret": "…" },
+  "microsoft": { "client_id": "…", "client_secret": "…" },
+  "apple": { "client_id": "fr.divemanager.web", "team_id": "…", "key_id": "…",
+             "private_key_path": "/path/to/AuthKey.p8" }
+}
+```
+
+Redirect URI to register at the provider: `{base_url}/api/v1/auth/oidc/{provider}/callback`
+(dev: `http://localhost:5173/api/v1/auth/oidc/google/callback` through the
+Vite proxy; Apple refuses localhost — test Apple on the deployed instance).
+Integration tests use a local fake provider (`identity/tests/oidc.rs`); no
+real provider is ever called by the test suite.
+
 ## Setup — frontend (`frontend/`, React + Vite + Capacitor, ADR-0005)
 
 - Node 22 (`nix shell nixpkgs#nodejs_22` works). `npm install`.

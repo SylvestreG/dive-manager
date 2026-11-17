@@ -25,6 +25,7 @@ import {
   SectionTitle,
   TextInput,
 } from "../components/ui";
+import { DevicesCard, LoginMethodsCard } from "../components/LoginMethods";
 import { t } from "../i18n/fr";
 import {
   api,
@@ -363,6 +364,11 @@ export default function Profile() {
         </>
       )}
 
+
+      <SectionTitle>{t.loginMethods.title}</SectionTitle>
+      <LoginMethodsCard />
+      <SectionTitle>{t.loginMethods.devicesTitle}</SectionTitle>
+      <DevicesCard />
 
       <div className="mt-8 flex flex-col gap-3">
         <Button variant="secondary" onClick={() => logout(false)}>

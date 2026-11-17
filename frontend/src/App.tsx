@@ -5,7 +5,9 @@ import AppShell from "./components/AppShell";
 import { getToken } from "./lib/api";
 import { useUnauthorizedRedirect } from "./lib/session";
 import Home from "./pages/Home";
+import AuthDone, { AuthNotice } from "./pages/AuthDone";
 import Login from "./pages/Login";
+import Privacy from "./pages/Privacy";
 import MagicLink from "./pages/MagicLink";
 import MyCompetencies from "./pages/MyCompetencies";
 import Platform from "./pages/Platform";
@@ -32,6 +34,11 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/confidentialite" element={<Privacy />} />
+      {/* SSO landing pages (backend callback redirects here). */}
+      <Route path="/auth/done" element={<AuthDone />} />
+      <Route path="/auth/check-email" element={<AuthNotice kind="check-email" />} />
+      <Route path="/auth/unknown" element={<AuthNotice kind="unknown" />} />
       {/* These two paths are the links the backend emails out. */}
       <Route path="/auth/ml/:token" element={<MagicLink />} />
 
