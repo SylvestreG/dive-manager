@@ -215,6 +215,7 @@ export const t = {
     linked: (provider: string) => `${provider} est maintenant associé à votre compte.`,
     alreadyUsed:
       "Ce compte est déjà associé à un autre compte Dive Manager (ou vous en avez déjà un de ce type : retirez-le d'abord).",
+    linkFailed: "L'association n'a pas abouti. Réessayez.",
     changeEmail: "Changer d'adresse email",
     setEmail: "Ajouter une adresse email",
     sendConfirmation: "Envoyer un lien de confirmation",

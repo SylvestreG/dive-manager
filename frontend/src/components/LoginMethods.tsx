@@ -138,7 +138,10 @@ export function LoginMethodsCard() {
         </Button>
       </div>
       <FormFeedback
-        error={error ?? (linkError ? m.alreadyUsed : null)}
+        error={
+          error ??
+          (linkError === "already_used" ? m.alreadyUsed : linkError ? m.linkFailed : null)
+        }
         success={success}
       />
     </Card>

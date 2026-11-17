@@ -765,7 +765,7 @@ async fn a_link_flow_cannot_be_finished_in_another_browser() {
     let url = h.start_link(&attacker_token, "google").await;
 
     // The victim's browser has no binding cookie (or its own).
-    for victim_cookie in [None, Some("dm_oidc=victim-own-value")] {
+    for victim_cookie in [None, Some("dm_oidc_0badc0de=victim-own-value")] {
         let location = h
             .callback_in(victim_cookie, "google", &url, |n| {
                 claims(
@@ -834,7 +834,7 @@ async fn binding_cookie_is_host_only_httponly_and_cleared() {
         .navigate_with_cookie(Method::GET, "/api/v1/auth/oidc/google/start", None, None)
         .await;
     let cookie = set_cookie.unwrap();
-    assert!(cookie.starts_with("dm_oidc="), "{cookie}");
+    assert!(cookie.starts_with("dm_oidc_"), "{cookie}");
     assert!(cookie.contains("HttpOnly") && cookie.contains("Path=/"));
     assert!(cookie.contains("Max-Age=600"));
 }
@@ -924,4 +924,56 @@ async fn oidc_start_is_rate_limited_per_ip() {
         last = location;
     }
     assert_eq!(last, "http://test/login?error=rate_limited");
+}
+
+#[tokio::test]
+async fn two_flows_in_the_same_browser_do_not_break_each_other() {
+    let h = harness().await;
+    let user = h.app.create_user("diver@example.com", false, false).await;
+    let (_, google, google_cookie) = h
+        .app
+        .navigate_with_cookie(Method::GET, "/api/v1/auth/oidc/google/start", None, None)
+        .await;
+    let (_, _ms, ms_cookie) = h
+        .app
+        .navigate_with_cookie(Method::GET, "/api/v1/auth/oidc/microsoft/start", None, None)
+        .await;
+    // The browser now holds both cookies; the Google flow still completes.
+    let jar = format!(
+        "{}; {}",
+        cookie_pair(google_cookie).unwrap(),
+        cookie_pair(ms_cookie).unwrap()
+    );
+    let location = h
+        .callback_in(Some(&jar), "google", &google, |n| {
+            claims(GOOGLE_CLIENT, n, "g-two", "diver@example.com", json!(true))
+        })
+        .await;
+    assert!(
+        location.starts_with("http://test/auth/done?code="),
+        "{location}"
+    );
+    let (status, session) = h.exchange_in(Some(&jar), &location).await;
+    assert_eq!(status, StatusCode::OK, "{session}");
+    assert_eq!(session["user"]["id"], user.id.to_string());
+}
+
+#[tokio::test]
+async fn a_failed_link_returns_to_the_profile() {
+    let h = harness().await;
+    let me = h.app.create_user("me@example.com", true, false).await;
+    let token = h.app.session_for(me.id).await;
+    let url = h.start_link(&token, "google").await;
+    let location = h
+        .callback("google", &url, |_| {
+            claims(
+                GOOGLE_CLIENT,
+                "forged-nonce",
+                "g-x",
+                "x@gmail.com",
+                json!(true),
+            )
+        })
+        .await;
+    assert_eq!(location, "http://test/profile?link_error=failed");
 }

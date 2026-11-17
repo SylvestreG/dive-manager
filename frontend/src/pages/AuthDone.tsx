@@ -22,7 +22,8 @@ export default function AuthDone() {
     if (!code || exchangedCodes.has(code)) return;
     exchangedCodes.add(code);
     // Drop the one-time code from the address bar / history right away.
-    window.history.replaceState(null, "", window.location.pathname);
+    // Keep React Router's history state (idx/key) intact.
+    window.history.replaceState(window.history.state, "", window.location.pathname);
     api
       .exchangeCode(code)
       .then((session) => {

@@ -43,6 +43,7 @@ const FLOW_TTL_MINUTES: i64 = 10;
 const EXCHANGE_TTL_SECONDS: i64 = 60;
 const JWKS_TTL: StdDuration = StdDuration::from_secs(3600);
 const JWKS_MIN_REFRESH: StdDuration = StdDuration::from_secs(60);
+const JWKS_FAILURE_BACKOFF: StdDuration = StdDuration::from_secs(30);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -191,6 +192,10 @@ pub fn redirect_uri(config: &Config, provider: Provider) -> String {
 pub struct OidcRuntime {
     http: reqwest::Client,
     jwks: RwLock<HashMap<String, (JwkSet, Instant)>>,
+    /// Single-flight refresh: concurrent logins wait for ONE fetch.
+    refresh: tokio::sync::Mutex<()>,
+    /// Last failed fetch per URL: no retry storm while a provider is down.
+    failures: RwLock<HashMap<String, Instant>>,
 }
 
 impl Default for OidcRuntime {
@@ -201,43 +206,87 @@ impl Default for OidcRuntime {
                 .build()
                 .expect("http client"),
             jwks: RwLock::new(HashMap::new()),
+            refresh: tokio::sync::Mutex::new(()),
+            failures: RwLock::new(HashMap::new()),
         }
+    }
+}
+
+/// A cached set is usable for `kid` when fresh and containing it, or —
+/// even without the kid — when refreshed less than a minute ago (bounds
+/// refetches triggered by unknown kids).
+fn usable(entry: Option<&(JwkSet, Instant)>, kid: &str) -> Option<JwkSet> {
+    match entry {
+        Some((set, at)) if at.elapsed() < JWKS_TTL && set.find(kid).is_some() => Some(set.clone()),
+        Some((set, at)) if at.elapsed() < JWKS_MIN_REFRESH => Some(set.clone()),
+        _ => None,
     }
 }
 
 impl OidcRuntime {
     async fn fetch_jwks(&self, url: &str) -> Result<JwkSet, AppError> {
-        let set = self
-            .http
-            .get(url)
-            .send()
-            .await
-            .and_then(|r| r.error_for_status())
-            .map_err(|e| {
-                tracing::error!(error = %e, url, "JWKS fetch failed");
-                AppError::Internal
-            })?
-            .json::<JwkSet>()
-            .await
-            .map_err(|e| {
-                tracing::error!(error = %e, url, "JWKS unparseable");
-                AppError::Internal
-            })?;
-        self.jwks
-            .write()
-            .await
-            .insert(url.to_string(), (set.clone(), Instant::now()));
-        Ok(set)
+        let result = async {
+            self.http
+                .get(url)
+                .send()
+                .await
+                .and_then(|r| r.error_for_status())
+                .map_err(|e| format!("JWKS fetch failed: {e}"))?
+                .json::<JwkSet>()
+                .await
+                .map_err(|e| format!("JWKS unparseable: {e}"))
+        }
+        .await;
+        match result {
+            Ok(set) => {
+                self.jwks
+                    .write()
+                    .await
+                    .insert(url.to_string(), (set.clone(), Instant::now()));
+                self.failures.write().await.remove(url);
+                Ok(set)
+            }
+            Err(error) => {
+                tracing::error!(error, url, "JWKS unavailable");
+                self.failures
+                    .write()
+                    .await
+                    .insert(url.to_string(), Instant::now());
+                Err(AppError::Internal)
+            }
+        }
     }
 
     /// Key for `kid`, refreshing the cached set when stale or when the kid is
-    /// unknown (key rotation) — at most once per minute.
+    /// unknown (key rotation) — at most once per minute, one fetch at a time,
+    /// and not again within 30 s of a failed fetch.
     async fn key_for(&self, url: &str, kid: &str) -> Result<DecodingKey, AppError> {
-        let cached = self.jwks.read().await.get(url).cloned();
+        let cached = usable(self.jwks.read().await.get(url), kid);
         let set = match cached {
-            Some((set, at)) if at.elapsed() < JWKS_TTL && set.find(kid).is_some() => set,
-            Some((set, at)) if at.elapsed() < JWKS_MIN_REFRESH => set,
-            _ => self.fetch_jwks(url).await?,
+            Some(set) => set,
+            None => {
+                let _guard = self.refresh.lock().await;
+                // Another request may have refreshed while we waited. Bound
+                // to a local so the read guard is released BEFORE a fetch
+                // takes the write lock (a guard in a match scrutinee lives
+                // until the end of the match: deadlock).
+                let refreshed = usable(self.jwks.read().await.get(url), kid);
+                match refreshed {
+                    Some(set) => set,
+                    None => {
+                        let recently_failed = self
+                            .failures
+                            .read()
+                            .await
+                            .get(url)
+                            .is_some_and(|at| at.elapsed() < JWKS_FAILURE_BACKOFF);
+                        if recently_failed {
+                            return Err(AppError::Internal);
+                        }
+                        self.fetch_jwks(url).await?
+                    }
+                }
+            }
         };
         let jwk = set
             .find(kid)
@@ -425,18 +474,25 @@ fn pkcs8_der_from_pem(pem: &[u8]) -> Result<Vec<u8>, AppError> {
 }
 
 /// Consumes the flow for `state` (single use, unexpired, same provider).
+fn binding_hashes(bindings: &[String]) -> Vec<Vec<u8>> {
+    bindings.iter().map(|b| tokens::hash(b)).collect()
+}
+
 async fn take_flow(
     state: &AppState,
     provider: Provider,
     state_param: &str,
-    browser_binding: Option<&str>,
+    browser_bindings: &[String],
 ) -> Result<oidc_flows::Model, AppError> {
     let invalid = || AppError::Unauthorized("invalid or expired login attempt".to_string());
     // Finished in another browser (no / wrong binding cookie) = refused.
-    let browser_hash = tokens::hash(browser_binding.ok_or_else(invalid)?);
+    // Several cookies can coexist (one per flow started in this browser).
+    if browser_bindings.is_empty() {
+        return Err(invalid());
+    }
     let flow = OidcFlows::find()
         .filter(oidc_flows::Column::StateHash.eq(tokens::hash(state_param)))
-        .filter(oidc_flows::Column::BrowserHash.eq(browser_hash))
+        .filter(oidc_flows::Column::BrowserHash.is_in(binding_hashes(browser_bindings)))
         .filter(oidc_flows::Column::Provider.eq(provider.as_str()))
         .filter(oidc_flows::Column::ConsumedAt.is_null())
         .filter(oidc_flows::Column::ExpiresAt.gt(now()))
@@ -569,8 +625,17 @@ pub enum CallbackOutcome {
     Linked,
     /// Link flow: this identity already belongs to another account.
     AlreadyUsed,
+    /// Link flow failed after the flow was identified (provider/token error).
+    LinkFailed,
     /// Account disabled, or the attempt was invalid.
     Failed,
+}
+
+/// Callback result: the outcome plus the hash of the binding cookie that
+/// matched the flow (so the handler clears exactly that cookie).
+pub struct CallbackResult {
+    pub outcome: CallbackOutcome,
+    pub binding_hash: Vec<u8>,
 }
 
 /// Handles the provider callback end to end.
@@ -579,12 +644,37 @@ pub async fn callback(
     provider: Provider,
     code: &str,
     state_param: &str,
-    browser_binding: Option<&str>,
+    browser_bindings: &[String],
+    client_label: Option<String>,
+) -> Result<CallbackResult, AppError> {
+    let spec = spec(&state.config, provider)?;
+    let flow = take_flow(state, provider, state_param, browser_bindings).await?;
+    let binding_hash = flow.browser_hash.clone();
+    let is_link = flow.purpose == oidc_flows::PURPOSE_LINK;
+    let outcome = match resolve(state, &spec, &flow, code, client_label).await {
+        Ok(outcome) => outcome,
+        // A logged-in user linking a provider goes back to their profile.
+        Err(error) if is_link => {
+            tracing::warn!(?error, provider = provider.as_str(), "OIDC link failed");
+            CallbackOutcome::LinkFailed
+        }
+        Err(error) => return Err(error),
+    };
+    Ok(CallbackResult {
+        outcome,
+        binding_hash,
+    })
+}
+
+async fn resolve(
+    state: &AppState,
+    spec: &ProviderSpec,
+    flow: &oidc_flows::Model,
+    code: &str,
     client_label: Option<String>,
 ) -> Result<CallbackOutcome, AppError> {
-    let spec = spec(&state.config, provider)?;
-    let flow = take_flow(state, provider, state_param, browser_binding).await?;
-    let identity = verify_code(state, &spec, &flow, code).await?;
+    let provider = spec.provider;
+    let identity = verify_code(state, spec, flow, code).await?;
 
     if flow.purpose == oidc_flows::PURPOSE_LINK {
         let user_id = flow.link_user_id.ok_or(AppError::Internal)?;
@@ -755,20 +845,23 @@ async fn issue_exchange_code<C: ConnectionTrait>(
 }
 
 /// Trades a one-time exchange code for a session (single use, 60 s, and
-/// only from the browser that started the flow).
+/// only from the browser that started the flow). Also returns the hash of
+/// the binding cookie that matched.
 pub async fn exchange(
     state: &AppState,
     code: &str,
-    browser_binding: Option<&str>,
-) -> Result<(String, users::Model), AppError> {
+    browser_bindings: &[String],
+) -> Result<(String, users::Model, Vec<u8>), AppError> {
     let invalid = || AppError::Unauthorized("invalid or expired login code".to_string());
+    if browser_bindings.is_empty() {
+        return Err(invalid());
+    }
     let hash = tokens::hash(code);
-    let browser_hash = tokens::hash(browser_binding.ok_or_else(invalid)?);
     let txn = state.db.begin().await?;
     let consumed = ExchangeCodes::update_many()
         .col_expr(exchange_codes::Column::ConsumedAt, Expr::value(Some(now())))
         .filter(exchange_codes::Column::CodeHash.eq(hash.clone()))
-        .filter(exchange_codes::Column::BrowserHash.eq(browser_hash))
+        .filter(exchange_codes::Column::BrowserHash.is_in(binding_hashes(browser_bindings)))
         .filter(exchange_codes::Column::ConsumedAt.is_null())
         .filter(exchange_codes::Column::ExpiresAt.gt(now()))
         .exec(&txn)
@@ -788,7 +881,7 @@ pub async fn exchange(
     let (token, _) =
         sessions::create_login_session(&txn, &state.config, user.id, row.client_label).await?;
     txn.commit().await?;
-    Ok((token, user))
+    Ok((token, user, row.browser_hash))
 }
 
 /// R8 case 4: emails the account holder a link that, once clicked, links

@@ -16,6 +16,7 @@ use crate::identity::extractors::ClientIp;
 use crate::identity::handlers::auth::device_label;
 use crate::identity::handlers::{SessionResponse, UserDto};
 use crate::identity::services::oidc::{self, CallbackOutcome, Provider};
+use crate::identity::services::tokens;
 use crate::AppState;
 
 #[derive(Serialize)]
@@ -53,12 +54,22 @@ fn secure(config: &Config) -> bool {
     config.base_url.starts_with("https://")
 }
 
-fn cookie_name(config: &Config) -> &'static str {
+fn cookie_prefix(config: &Config) -> &'static str {
     if secure(config) {
-        "__Host-dm_oidc"
+        "__Host-dm_oidc_"
     } else {
-        "dm_oidc"
+        "dm_oidc_"
     }
+}
+
+/// One cookie PER FLOW (name suffixed from the value's hash), so starting a
+/// second login in the same browser does not break the first one.
+fn cookie_name(config: &Config, binding_hash: &[u8]) -> String {
+    let suffix: String = binding_hash[..4]
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    format!("{}{suffix}", cookie_prefix(config))
 }
 
 fn cookie_attributes(config: &Config) -> &'static str {
@@ -73,31 +84,33 @@ fn cookie_attributes(config: &Config) -> &'static str {
 pub(crate) fn set_binding_cookie(config: &Config, value: &str) -> HeaderValue {
     HeaderValue::from_str(&format!(
         "{}={value}; Max-Age=600; {}",
-        cookie_name(config),
+        cookie_name(config, &tokens::hash(value)),
         cookie_attributes(config)
     ))
     .expect("cookie header")
 }
 
-fn clear_binding_cookie(config: &Config) -> HeaderValue {
+fn clear_binding_cookie(config: &Config, binding_hash: &[u8]) -> HeaderValue {
     HeaderValue::from_str(&format!(
         "{}=; Max-Age=0; {}",
-        cookie_name(config),
+        cookie_name(config, binding_hash),
         cookie_attributes(config)
     ))
     .expect("cookie header")
 }
 
-fn read_binding(config: &Config, headers: &HeaderMap) -> Option<String> {
-    let name = cookie_name(config);
+/// Every binding cookie this browser holds (one per pending flow).
+fn read_bindings(config: &Config, headers: &HeaderMap) -> Vec<String> {
+    let prefix = cookie_prefix(config);
     headers
         .get_all(header::COOKIE)
         .iter()
         .filter_map(|v| v.to_str().ok())
         .flat_map(|v| v.split(';'))
         .filter_map(|pair| pair.trim().split_once('='))
-        .find(|(key, _)| *key == name)
+        .filter(|(key, value)| key.starts_with(prefix) && !value.is_empty())
         .map(|(_, value)| value.to_string())
+        .collect()
 }
 
 /// GET /auth/oidc/{provider}/start → 303 to the provider, setting the
@@ -147,34 +160,35 @@ async fn finish(
     params: CallbackParams,
     headers: HeaderMap,
 ) -> Response {
-    let clear = AppendHeaders([(header::SET_COOKIE, clear_binding_cookie(&state.config))]);
     let Some(provider) = Provider::parse(&provider) else {
-        return (clear, frontend(&state, "/login?error=sso")).into_response();
+        return frontend(&state, "/login?error=sso").into_response();
     };
     if params.error.is_some() {
-        return (clear, frontend(&state, "/login?error=sso_cancelled")).into_response();
+        return frontend(&state, "/login?error=sso_cancelled").into_response();
     }
     let (Some(code), Some(flow_state)) = (params.code, params.state) else {
-        return (clear, frontend(&state, "/login?error=sso")).into_response();
+        return frontend(&state, "/login?error=sso").into_response();
     };
-    let binding = read_binding(&state.config, &headers);
-    let outcome = match oidc::callback(
+    let bindings = read_bindings(&state.config, &headers);
+    let result = match oidc::callback(
         &state,
         provider,
         &code,
         &flow_state,
-        binding.as_deref(),
+        &bindings,
         device_label(&headers),
     )
     .await
     {
-        Ok(outcome) => outcome,
+        Ok(result) => result,
         Err(error) => {
+            // The flow could not be identified: nothing to clear (the cookie
+            // expires by itself).
             tracing::warn!(?error, provider = provider.as_str(), "OIDC callback failed");
-            CallbackOutcome::Failed
+            return frontend(&state, "/login?error=sso").into_response();
         }
     };
-    let path = match outcome {
+    let path = match result.outcome {
         CallbackOutcome::LoggedIn { exchange_code } => {
             // Keep the binding cookie: the exchange needs it (then clears it).
             return frontend(&state, &format!("/auth/done?code={exchange_code}")).into_response();
@@ -183,9 +197,17 @@ async fn finish(
         CallbackOutcome::UnknownAccount => "/auth/unknown".to_string(),
         CallbackOutcome::Linked => format!("/profile?linked={}", provider.as_str()),
         CallbackOutcome::AlreadyUsed => "/profile?link_error=already_used".to_string(),
+        CallbackOutcome::LinkFailed => "/profile?link_error=failed".to_string(),
         CallbackOutcome::Failed => "/login?error=sso".to_string(),
     };
-    (clear, frontend(&state, &path)).into_response()
+    (
+        AppendHeaders([(
+            header::SET_COOKIE,
+            clear_binding_cookie(&state.config, &result.binding_hash),
+        )]),
+        frontend(&state, &path),
+    )
+        .into_response()
 }
 
 /// GET callback (Google, Microsoft).
@@ -221,10 +243,13 @@ pub async fn exchange(
     headers: HeaderMap,
     Json(body): Json<ExchangeRequest>,
 ) -> Result<Response, AppError> {
-    let binding = read_binding(&state.config, &headers);
-    let (token, user) = oidc::exchange(&state, &body.code, binding.as_deref()).await?;
+    let bindings = read_bindings(&state.config, &headers);
+    let (token, user, binding_hash) = oidc::exchange(&state, &body.code, &bindings).await?;
     Ok((
-        AppendHeaders([(header::SET_COOKIE, clear_binding_cookie(&state.config))]),
+        AppendHeaders([(
+            header::SET_COOKIE,
+            clear_binding_cookie(&state.config, &binding_hash),
+        )]),
         Json(SessionResponse {
             token,
             user: UserDto::from(&user),
